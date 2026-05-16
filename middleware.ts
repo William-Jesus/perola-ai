@@ -19,13 +19,22 @@ function isValidSession(token: string): boolean {
   }
 }
 
+function stripHeaders(res: NextResponse): NextResponse {
+  res.headers.delete("x-nextjs-stale-time")
+  res.headers.delete("x-nextjs-prerender")
+  res.headers.delete("x-nextjs-cache")
+  res.headers.delete("x-nextjs-matched-path")
+  res.headers.delete("vary")
+  return res
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Allow internal server-to-server calls
   const internalSecret = request.headers.get("x-internal-secret")
   if (internalSecret && internalSecret === INTERNAL_SECRET) {
-    return NextResponse.next()
+    return stripHeaders(NextResponse.next())
   }
 
   // Allow auth API routes and login page
@@ -37,15 +46,15 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon")
   ) {
-    return NextResponse.next()
+    return stripHeaders(NextResponse.next())
   }
 
   const token = request.cookies.get(SESSION_COOKIE)?.value
   if (!token || !isValidSession(token)) {
-    return NextResponse.redirect(new URL("/login", request.url))
+    return stripHeaders(NextResponse.redirect(new URL("/login", request.url)))
   }
 
-  return NextResponse.next()
+  return stripHeaders(NextResponse.next())
 }
 
 export const config = {
