@@ -222,7 +222,7 @@ Você tem acesso a múltiplos computadores via agentes remotos.
 
     const data = await response.json()
     trackGptSession().catch(() => {})
-    return NextResponse.json({ client_secret: data.client_secret })
+    return NextResponse.json({ client_secret: { value: data.value } })
   } catch (error) {
     console.error("Session error:", error)
     return NextResponse.json({ error: "Failed to create session" }, { status: 500 })
