@@ -202,14 +202,6 @@ Você tem acesso a múltiplos computadores via agentes remotos.
             parameters: { type: "object", properties: {} },
           },
         ],
-        tool_choice: "auto" as const,
-        turn_detection: {
-          type: "server_vad" as const,
-          threshold: 0.3,
-          silence_duration_ms: 800,
-          prefix_padding_ms: 200,
-          create_response: false,
-        },
       },
     }
 
