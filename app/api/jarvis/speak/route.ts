@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { checkRateLimit } from "@/lib/rate-limit"
 
-const VOICE_ID = "mjMw4djkWSDAyI4tdb6b"
+const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "mjMw4djkWSDAyI4tdb6b"
 
 async function elevenLabs(text: string, apiKey: string): Promise<ArrayBuffer> {
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`, {

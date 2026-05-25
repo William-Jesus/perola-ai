@@ -33,10 +33,17 @@ export async function POST(request: Request) {
 
     const memoryContext = await loadMemory()
 
+    const realtimeVoice = process.env.REALTIME_VOICE || "marin"
+
     const sessionBody = {
       session: {
         type: "realtime" as const,
         model: "gpt-realtime-2",
+        audio: {
+          output: {
+            voice: realtimeVoice,
+          },
+        },
         instructions: `Você é JARVIS (Just A Rather Very Intelligent System), o assistente de IA do Tony Stark.${memoryContext}
 Você é inteligente, sofisticado, levemente sarcástico e extremamente eficiente.
 Responda sempre em português, de forma concisa e direta.
