@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { trackGptSession } from "@/lib/usage-tracker"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 async function loadMemory(): Promise<string> {
   try {
@@ -20,7 +21,10 @@ async function loadMemory(): Promise<string> {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const rl = checkRateLimit(request, "session", 10)
+  if (!rl.allowed) return rl.response
+
   try {
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) {
@@ -195,6 +199,12 @@ Você tem acesso a múltiplos computadores via agentes remotos.
             name: "unmute",
             description: "Ativa o som de um computador",
             parameters: { type: "object", properties: { agentId: { type: "string" } } },
+          },
+          {
+            type: "function",
+            name: "capture_camera",
+            description: "Captura uma imagem da webcam do usuário para análise visual. Use quando o usuário perguntar 'o que é isso', 'me descreve', 'o que você vê', ou quando precisar identificar objetos, textos, pessoas ou cenários visuais.",
+            parameters: { type: "object", properties: {} },
           },
         ],
         tool_choice: "auto",

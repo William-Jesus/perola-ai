@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import fs from "fs/promises"
 import path from "path"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 const MEMORY_FILE = process.env.MEMORY_PATH || path.join(process.cwd(), "data", "memory.json")
 
@@ -24,12 +25,19 @@ async function writeMemory(memory: Memory) {
   await fs.writeFile(MEMORY_FILE, JSON.stringify(memory, null, 2), "utf-8")
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const rl = checkRateLimit(request, "memory-get", 10)
+  if (!rl.allowed) return rl.response
+
+
   const memory = await readMemory()
   return NextResponse.json(memory)
 }
 
 export async function POST(request: Request) {
+  const rl = checkRateLimit(request, "memory-post", 10)
+  if (!rl.allowed) return rl.response
+
   try {
     const { messages } = await request.json()
     if (!messages?.length) return NextResponse.json({ ok: true })

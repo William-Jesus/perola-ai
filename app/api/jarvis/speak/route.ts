@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 const VOICE_ID = "mjMw4djkWSDAyI4tdb6b"
 
@@ -27,6 +28,9 @@ async function openaiTTS(text: string, apiKey: string): Promise<ArrayBuffer> {
 }
 
 export async function POST(request: Request) {
+  const rl = checkRateLimit(request, "speak", 30)
+  if (!rl.allowed) return rl.response
+
   try {
     const { text } = await request.json()
     if (!text) return NextResponse.json({ error: "Text is required" }, { status: 400 })

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 export async function POST(request: Request) {
+  const rl = checkRateLimit(request, "title", 30)
+  if (!rl.allowed) return rl.response
+
   try {
     const { messages } = await request.json()
     if (!messages || messages.length === 0) {

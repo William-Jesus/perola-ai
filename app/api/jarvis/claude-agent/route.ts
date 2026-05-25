@@ -4,60 +4,109 @@ import { trackClaude } from "@/lib/usage-tracker"
 import { exec } from "child_process"
 import { promisify } from "util"
 import fs from "fs/promises"
+import path from "path"
 import { getAuthenticatedClient } from "@/lib/google-client"
 import { google } from "googleapis"
 import { chromium, Browser, Page } from "playwright"
+import { checkRateLimit } from "@/lib/rate-limit"
+import { isBlockedCommand, sanitizePath } from "@/lib/sandbox"
 
 const execAsync = promisify(exec)
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-let browser: Browser | null = null
-let page: Page | null = null
+// Browser pool with auto-cleanup
+class BrowserPool {
+  private browser: Browser | null = null
+  private page: Page | null = null
+  private lastUsed = 0
+  private cleanupTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly IDLE_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 
-async function getBrowserPage(): Promise<Page> {
-  if (!browser || !browser.isConnected()) {
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-    })
+  async getPage(): Promise<Page> {
+    this.lastUsed = Date.now()
+    this.scheduleCleanup()
+
+    if (!this.browser || !this.browser.isConnected()) {
+      this.browser = await chromium.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+      })
+    }
+    if (!this.page || this.page.isClosed()) {
+      this.page = await this.browser.newPage()
+      await this.page.setViewportSize({ width: 1280, height: 720 })
+      await this.page.setExtraHTTPHeaders({ "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" })
+    }
+    return this.page
   }
-  if (!page || page.isClosed()) {
-    page = await browser.newPage()
-    await page.setViewportSize({ width: 1280, height: 720 })
-    await page.setExtraHTTPHeaders({ "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" })
+
+  async closePage() {
+    if (this.page && !this.page.isClosed()) {
+      await this.page.close()
+      this.page = null
+    }
   }
-  return page
+
+  async close() {
+    this.clearCleanup()
+    if (this.page && !this.page.isClosed()) await this.page.close()
+    if (this.browser && this.browser.isConnected()) await this.browser.close()
+    this.page = null
+    this.browser = null
+  }
+
+  private scheduleCleanup() {
+    this.clearCleanup()
+    this.cleanupTimer = setTimeout(async () => {
+      if (Date.now() - this.lastUsed >= this.IDLE_TIMEOUT_MS) {
+        await this.close()
+      }
+    }, this.IDLE_TIMEOUT_MS)
+  }
+
+  private clearCleanup() {
+    if (this.cleanupTimer) {
+      clearTimeout(this.cleanupTimer)
+      this.cleanupTimer = null
+    }
+  }
 }
+
+const browserPool = new BrowserPool()
+
+// Graceful shutdown
+process.on("SIGTERM", async () => await browserPool.close())
+process.on("SIGINT", async () => await browserPool.close())
 
 async function browserAction(action: string, params: Record<string, any>): Promise<string> {
   try {
     switch (action) {
       case "navigate": {
-        const p = await getBrowserPage()
+        const p = await browserPool.getPage()
         await p.goto(params.url, { waitUntil: "domcontentloaded", timeout: 30000 })
         const title = await p.title()
         const url = p.url()
         return `Página aberta: ${title}\nURL: ${url}`
       }
       case "click": {
-        const p = await getBrowserPage()
+        const p = await browserPool.getPage()
         await p.click(params.selector, { timeout: 10000 })
         await p.waitForTimeout(1500)
         return `Clicou em: ${params.selector}`
       }
       case "type": {
-        const p = await getBrowserPage()
+        const p = await browserPool.getPage()
         await p.fill(params.selector, params.text)
         return `Digitou em ${params.selector}: "${params.text}"`
       }
       case "press": {
-        const p = await getBrowserPage()
+        const p = await browserPool.getPage()
         await p.keyboard.press(params.key)
         await p.waitForTimeout(1500)
         return `Tecla pressionada: ${params.key}`
       }
       case "extract": {
-        const p = await getBrowserPage()
+        const p = await browserPool.getPage()
         if (params.selector) {
           const el = await p.$(params.selector)
           const text = await el?.innerText()
@@ -67,13 +116,12 @@ async function browserAction(action: string, params: Record<string, any>): Promi
         return text.slice(0, 8000)
       }
       case "wait_for": {
-        const p = await getBrowserPage()
+        const p = await browserPool.getPage()
         await p.waitForSelector(params.selector, { timeout: 15000 })
         return `Elemento encontrado: ${params.selector}`
       }
       case "close": {
-        await page?.close()
-        page = null
+        await browserPool.closePage()
         return "Aba fechada"
       }
       default:
@@ -84,11 +132,8 @@ async function browserAction(action: string, params: Record<string, any>): Promi
   }
 }
 
-const BLOCKED_COMMANDS = ["rm -rf", "sudo rm", "mkfs", "dd if=", ":(){", "chmod 777 /"]
-
 async function runBash(command: string): Promise<string> {
-  const isBlocked = BLOCKED_COMMANDS.some((b) => command.includes(b))
-  if (isBlocked) return "Comando bloqueado por segurança."
+  if (isBlockedCommand(command)) return "Comando bloqueado por segurança."
   try {
     const { stdout, stderr } = await execAsync(command, { timeout: 30000 })
     return (stdout || stderr || "(sem saída)").slice(0, 8000)
@@ -98,8 +143,10 @@ async function runBash(command: string): Promise<string> {
 }
 
 async function readFile(filePath: string): Promise<string> {
+  const { safe, resolved } = sanitizePath(filePath)
+  if (!safe) return "Erro: path não permitido por segurança."
   try {
-    const content = await fs.readFile(filePath, "utf-8")
+    const content = await fs.readFile(resolved, "utf-8")
     return content.length > 8000 ? content.slice(0, 8000) + "\n...(truncado)" : content
   } catch (e: any) {
     return `Erro ao ler arquivo: ${e.message}`
@@ -107,9 +154,11 @@ async function readFile(filePath: string): Promise<string> {
 }
 
 async function writeFile(filePath: string, content: string): Promise<string> {
+  const { safe, resolved } = sanitizePath(filePath)
+  if (!safe) return "Erro: path não permitido por segurança."
   try {
-    await fs.writeFile(filePath, content, "utf-8")
-    return `Arquivo salvo: ${filePath}`
+    await fs.writeFile(resolved, content, "utf-8")
+    return `Arquivo salvo: ${resolved}`
   } catch (e: any) {
     return `Erro ao salvar: ${e.message}`
   }
@@ -148,7 +197,7 @@ async function listCalendarEvents(maxResults = 10): Promise<string> {
     })
     const events = res.data.items || []
     if (!events.length) return "Nenhum evento encontrado."
-    return events.map(e => {
+    return events.map((e) => {
       const start = e.start?.dateTime || e.start?.date || ""
       return `- ${e.summary} | ${new Date(start).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}`
     }).join("\n")
@@ -181,7 +230,7 @@ async function listEmails(maxResults = 5, query = ""): Promise<string> {
     const details = await Promise.all(messages.slice(0, 5).map(async (m) => {
       const msg = await gmail.users.messages.get({ userId: "me", id: m.id!, format: "metadata", metadataHeaders: ["From", "Subject", "Date"] })
       const headers = msg.data.payload?.headers || []
-      const get = (name: string) => headers.find(h => h.name === name)?.value || ""
+      const get = (name: string) => headers.find((h) => h.name === name)?.value || ""
       return `- De: ${get("From")}\n  Assunto: ${get("Subject")}\n  Data: ${get("Date")}`
     }))
     return details.join("\n\n")
@@ -288,6 +337,9 @@ const tools: any[] = [
 ]
 
 export async function POST(req: Request) {
+  const rl = checkRateLimit(req, "claude-agent", 20)
+  if (!rl.allowed) return rl.response
+
   try {
     const { task } = await req.json()
     if (!task) return NextResponse.json({ error: "Task vazia" }, { status: 400 })
@@ -322,11 +374,9 @@ O fuso horário do usuário é America/Sao_Paulo (GMT-3).`,
         messages.push({ role: "assistant", content: response.content as any })
 
         const allToolUses = response.content.filter((b: any) => b.type === "tool_use") as Anthropic.ToolUseBlock[]
-        // Web search is executed server-side by Anthropic — results already in response.content
         const localToolUses = allToolUses.filter((b) => b.name !== "web_search")
 
         if (localToolUses.length === 0) {
-          // Only web search tools — just continue the loop, results are in content
           continue
         }
 

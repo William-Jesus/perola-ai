@@ -1,19 +1,19 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
+import { unsealData } from "iron-session"
 
 const SESSION_COOKIE = "jarvis_session"
-const SESSION_SECRET = process.env.SESSION_SECRET || "jarvis-secret-change-in-production-32chars"
+const SESSION_SECRET = process.env.SESSION_SECRET || "jarvis-secret-change-in-production-32chars-min-length"
 const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || "jarvis-internal-secret-key"
-const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000
+const TTL_SECONDS = 60 * 60 * 24 * 7
 
-function isValidSession(token: string): boolean {
+async function isValidSession(token: string): Promise<boolean> {
   try {
-    const decoded = Buffer.from(token, "base64").toString()
-    const [timestamp, ...rest] = decoded.split(":")
-    const secret = rest.join(":")
-    if (secret !== SESSION_SECRET) return false
-    const age = Date.now() - parseInt(timestamp)
-    return age < SESSION_DURATION
+    const data = await unsealData<{ loggedIn: boolean }>(token, {
+      password: SESSION_SECRET,
+      ttl: TTL_SECONDS,
+    })
+    return data.loggedIn === true
   } catch {
     return false
   }
@@ -28,7 +28,7 @@ function stripHeaders(res: NextResponse): NextResponse {
   return res
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Allow internal server-to-server calls
@@ -50,7 +50,7 @@ export function middleware(request: NextRequest) {
   }
 
   const token = request.cookies.get(SESSION_COOKIE)?.value
-  if (!token || !isValidSession(token)) {
+  if (!token || !(await isValidSession(token))) {
     return stripHeaders(NextResponse.redirect(new URL("/login", request.url)))
   }
 
@@ -58,5 +58,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*))"],
 }

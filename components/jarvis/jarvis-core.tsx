@@ -10,6 +10,7 @@ import { HudOverlay } from "./hud-overlay"
 import { CircularInterface } from "./circular-interface"
 import { ConversationSidebar, type SavedConversation } from "./conversation-sidebar"
 import { NeuralBackground } from "./neural-background"
+import { CameraFeed, type CameraFeedRef } from "./camera-feed"
 
 export type JarvisState = "idle" | "listening" | "thinking" | "speaking"
 
@@ -47,8 +48,15 @@ export function JarvisCore() {
   const wakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [isAwake, setIsAwake] = useState(false)
   const [isFollowUp, setIsFollowUp] = useState(false)
+  const [cameraActive, setCameraActive] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false)
   const WAKE_TIMEOUT = 20000
   const FOLLOWUP_TIMEOUT = 8000
+  const MAX_RECONNECT_ATTEMPTS = 5
+
+  const cameraRef = useRef<CameraFeedRef>(null)
+  const reconnectAttemptsRef = useRef(0)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { keywordDetection, isLoaded: porcupineLoaded, init: porcupineInit, start: porcupineStart, stop: porcupineStop } = usePorcupine()
 
@@ -261,12 +269,30 @@ export function JarvisCore() {
 
   const handleFunctionCall = async (callId: string, name: string, args: Record<string, unknown>) => {
     try {
-      const res = await fetch("/api/jarvis/execute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: name, params: args, agentId: args.agentId }),
-      })
-      const result = await res.json()
+      let result: any
+
+      if (name === "capture_camera") {
+        setState("thinking")
+        const frame = await cameraRef.current?.captureFrame()
+        if (!frame) {
+          result = { error: "Não foi possível capturar a imagem da câmera." }
+        } else {
+          const visionRes = await fetch("/api/jarvis/vision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: frame }),
+          })
+          const visionData = await visionRes.json()
+          result = { description: visionData.description || visionData.error || "Não consegui identificar." }
+        }
+      } else {
+        const res = await fetch("/api/jarvis/execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: name, params: args, agentId: args.agentId }),
+        })
+        result = await res.json()
+      }
 
       if (dcRef.current?.readyState === "open") {
         dcRef.current.send(JSON.stringify({
@@ -285,7 +311,11 @@ export function JarvisCore() {
   }
 
   const speakWithElevenLabs = async (text: string) => {
-    if (ttsAudioRef.current) return
+    // Cancel previous TTS
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause()
+      ttsAudioRef.current = null
+    }
     setState("speaking")
     if (micTrackRef.current) micTrackRef.current.enabled = false
     try {
@@ -325,7 +355,36 @@ export function JarvisCore() {
     }
   }
 
-  const connect = async () => {
+  const scheduleReconnect = useCallback(() => {
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    const attempts = reconnectAttemptsRef.current
+    if (attempts >= MAX_RECONNECT_ATTEMPTS) {
+      setReconnecting(false)
+      return
+    }
+    const delay = Math.min(1000 * Math.pow(2, attempts), 30000)
+    setReconnecting(true)
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectAttemptsRef.current = attempts + 1
+      connectInternal()
+    }, delay)
+  }, [])
+
+  const connectInternal = async () => {
+    // Clean up any existing connection first
+    if (pcRef.current) {
+      pcRef.current.close()
+      pcRef.current = null
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+    }
+
     try {
       // Get ephemeral token
       const sessionRes = await fetch("/api/jarvis/session", { method: "POST" })
@@ -365,12 +424,21 @@ export function JarvisCore() {
       dc.onmessage = (e) => handleRealtimeEvent(JSON.parse(e.data))
       dc.onopen = () => {
         setConnected(true)
+        setReconnecting(false)
+        reconnectAttemptsRef.current = 0
         setState("idle")
       }
       dc.onclose = () => {
         setConnected(false)
         setState("idle")
         porcupineStop().catch(() => {})
+        scheduleReconnect()
+      }
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          setConnected(false)
+          scheduleReconnect()
+        }
       }
 
       // SDP negotiation
@@ -396,7 +464,13 @@ export function JarvisCore() {
     } catch (error) {
       console.error("Connection error:", error)
       setMicPermission("denied")
+      scheduleReconnect()
     }
+  }
+
+  const connect = () => {
+    reconnectAttemptsRef.current = 0
+    connectInternal()
   }
 
   const sendTextMessage = (text: string) => {
@@ -496,8 +570,15 @@ export function JarvisCore() {
     connect()
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current)
-      if (audioContextRef.current) audioContextRef.current.close()
+      if (audioContextRef.current) audioContextRef.current.close().catch(() => {})
       if (pcRef.current) pcRef.current.close()
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause()
+        ttsAudioRef.current = null
+      }
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      if (wakeTimerRef.current) clearTimeout(wakeTimerRef.current)
+      cameraRef.current?.stop()
     }
   }, [mounted])
 
@@ -523,7 +604,12 @@ export function JarvisCore() {
       <div className="relative z-10 flex h-full flex-col items-center justify-center p-4">
         <div className="absolute top-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
           <StatusIndicator state={state} transcript={transcript} />
-          {connected && !isAwake && (
+          {reconnecting && (
+            <p className="text-[10px] font-mono text-yellow-400/70 tracking-widest animate-pulse">
+              RECONECTANDO...
+            </p>
+          )}
+          {connected && !isAwake && !reconnecting && (
             <p className="text-[10px] font-mono text-cyan-500/40 tracking-widest animate-pulse">
               DIGA &quot;JARVIS&quot; PARA ATIVAR
             </p>
@@ -551,7 +637,7 @@ export function JarvisCore() {
 
         {!connected && micPermission !== "denied" && (
           <div className="absolute top-24 left-1/2 -translate-x-1/2 text-sm text-muted-foreground animate-pulse">
-            Conectando ao JARVIS...
+            {reconnecting ? "Reconectando ao JARVIS..." : "Conectando ao JARVIS..."}
           </div>
         )}
 
@@ -566,6 +652,11 @@ export function JarvisCore() {
           </div>
         </div>
 
+        {/* Camera feed overlay */}
+        <div className="absolute bottom-24 right-4 z-40">
+          <CameraFeed ref={cameraRef} active={cameraActive} />
+        </div>
+
         <div className="absolute bottom-4 left-4 right-4 z-50 flex flex-col items-center gap-2">
           <ConversationPanel messages={messages} />
           <form
@@ -573,6 +664,18 @@ export function JarvisCore() {
             className="w-full max-w-2xl rounded-md border border-cyan-300/25 bg-black/65 p-2 shadow-[0_0_22px_rgba(0,174,255,0.18)] backdrop-blur-md"
           >
             <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setCameraActive((v) => !v)}
+                className={`rounded-md border px-3 py-2 font-mono text-xs transition-colors ${
+                  cameraActive
+                    ? "border-cyan-400/60 bg-cyan-400/20 text-cyan-300"
+                    : "border-cyan-300/20 bg-cyan-950/20 text-cyan-200/50 hover:text-cyan-200 hover:border-cyan-300/40"
+                }`}
+                title={cameraActive ? "Desativar câmera" : "Ativar câmera"}
+              >
+                {cameraActive ? "📷 ON" : "📷 OFF"}
+              </button>
               <input
                 type="text"
                 value={textInput}

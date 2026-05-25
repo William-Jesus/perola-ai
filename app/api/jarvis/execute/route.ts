@@ -3,12 +3,13 @@ import { exec } from "child_process"
 import { promisify } from "util"
 import fs from "fs/promises"
 import path from "path"
+import { checkRateLimit } from "@/lib/rate-limit"
+import { isBlockedCommand, sanitizePath } from "@/lib/sandbox"
+
 const execAsync = promisify(exec)
 
 const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET || "jarvis-internal-secret-key"
 const internalHeaders = { "Content-Type": "application/json", "x-internal-secret": INTERNAL_SECRET }
-
-const BLOCKED_COMMANDS = ["rm -rf", "sudo", "mkfs", "dd if=", ":(){", "chmod 777 /"]
 
 const REMOTE_ACTIONS = ["open_app", "set_volume", "mute", "unmute", "read_file", "write_file", "list_directory", "run_command"]
 
@@ -35,6 +36,9 @@ const APP_MAP: Record<string, string> = {
 }
 
 export async function POST(request: Request) {
+  const rl = checkRateLimit(request, "execute", 30)
+  if (!rl.allowed) return rl.response
+
   try {
     const { action, params, agentId } = await request.json()
 
@@ -51,7 +55,6 @@ export async function POST(request: Request) {
     }
 
     if (action === "wake_windows") {
-      // WoL must be sent from Mac agent on the same LAN as Windows — not from VPS
       const wsApi = process.env.WS_API_URL || "http://localhost:3003"
       const agentsRes = await fetch(`${wsApi}/agents`)
       const agentsData = await agentsRes.json()
@@ -59,8 +62,7 @@ export async function POST(request: Request) {
       if (!macAgent) {
         return NextResponse.json({ error: "Mac agent não conectado — necessário para Wake-on-LAN" }, { status: 503 })
       }
-      const MAC = (process.env.WINDOWS_MAC_ADDRESS || "9C6B001993CF").replace(/[:\-]/g, "").toUpperCase()
-      // Get Mac IP to calculate subnet broadcast (more reliable than 255.255.255.255)
+      const MAC = (process.env.WINDOWS_MAC_ADDRESS || "9C6B001993CF").replace(/[:-]/g, "").toUpperCase()
       const ipRes = await fetch(`${wsApi}/command`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -110,7 +112,7 @@ export async function POST(request: Request) {
       const data = await res.json()
       const agents = data.agents || []
       if (agents.length === 0) return NextResponse.json({ success: true, result: "Nenhum agente conectado no momento." })
-      const list = agents.map((a: {hostname: string, platform: string, id: string}) => `${a.hostname} (${a.platform}) - ID: ${a.id}`).join("\n")
+      const list = agents.map((a: { hostname: string; platform: string; id: string }) => `${a.hostname} (${a.platform}) - ID: ${a.id}`).join("\n")
       return NextResponse.json({ success: true, result: list })
     }
 
@@ -155,22 +157,28 @@ export async function POST(request: Request) {
     }
 
     if (action === "read_file") {
-      const filePath = path.resolve(params?.path || "")
-      const content = await fs.readFile(filePath, "utf-8")
+      const { safe, resolved } = sanitizePath(params?.path || "")
+      if (!safe) return NextResponse.json({ error: "Path não permitido" }, { status: 403 })
+
+      const content = await fs.readFile(resolved, "utf-8")
       const preview = content.length > 2000 ? content.slice(0, 2000) + "\n...(truncado)" : content
       return NextResponse.json({ success: true, result: preview })
     }
 
     if (action === "write_file") {
-      const filePath = path.resolve(params?.path || "")
+      const { safe, resolved } = sanitizePath(params?.path || "")
+      if (!safe) return NextResponse.json({ error: "Path não permitido" }, { status: 403 })
+
       const content = params?.content || ""
-      await fs.writeFile(filePath, content, "utf-8")
-      return NextResponse.json({ success: true, message: `Arquivo salvo em ${filePath}` })
+      await fs.writeFile(resolved, content, "utf-8")
+      return NextResponse.json({ success: true, message: `Arquivo salvo em ${resolved}` })
     }
 
     if (action === "list_directory") {
-      const dirPath = path.resolve(params?.path || process.env.HOME || "~")
-      const entries = await fs.readdir(dirPath, { withFileTypes: true })
+      const { safe, resolved } = sanitizePath(params?.path || process.env.HOME || "~")
+      if (!safe) return NextResponse.json({ error: "Path não permitido" }, { status: 403 })
+
+      const entries = await fs.readdir(resolved, { withFileTypes: true })
       const list = entries.map((e) => `${e.isDirectory() ? "[pasta]" : "[arquivo]"} ${e.name}`).join("\n")
       return NextResponse.json({ success: true, result: list })
     }
@@ -179,8 +187,9 @@ export async function POST(request: Request) {
       const command = params?.command || ""
       if (!command) return NextResponse.json({ error: "Comando vazio" }, { status: 400 })
 
-      const isBlocked = BLOCKED_COMMANDS.some((blocked) => command.includes(blocked))
-      if (isBlocked) return NextResponse.json({ error: "Comando não permitido por segurança" }, { status: 403 })
+      if (isBlockedCommand(command)) {
+        return NextResponse.json({ error: "Comando não permitido por segurança" }, { status: 403 })
+      }
 
       const { stdout, stderr } = await execAsync(command, { timeout: 15000 })
       const output = (stdout || stderr || "Comando executado sem saída").slice(0, 2000)
