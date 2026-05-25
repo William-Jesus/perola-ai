@@ -84,7 +84,7 @@ export async function POST(request: Request) {
       const task = params?.task || ""
       if (!task) return NextResponse.json({ error: "Task vazia" }, { status: 400 })
 
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3002"
       const res = await fetch(`${baseUrl}/api/jarvis/claude-agent`, {
         method: "POST",
         headers: internalHeaders,
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
 
     if (action === "get_news") {
       const topic = params?.topic || ""
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/jarvis/news`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3002"}/api/jarvis/news`, {
         method: "POST",
         headers: internalHeaders,
         body: JSON.stringify({ topic }),
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
       const query = params?.query || ""
       if (!query) return NextResponse.json({ error: "Query vazia" }, { status: 400 })
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/jarvis/search`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3002"}/api/jarvis/search`, {
         method: "POST",
         headers: internalHeaders,
         body: JSON.stringify({ query }),

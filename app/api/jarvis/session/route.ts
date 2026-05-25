@@ -4,7 +4,7 @@ import { checkRateLimit } from "@/lib/rate-limit"
 
 async function loadMemory(): Promise<string> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3002"
     const res = await fetch(`${baseUrl}/api/jarvis/memory`)
     const memory = await res.json()
 
