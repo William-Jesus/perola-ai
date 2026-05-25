@@ -33,15 +33,11 @@ export async function POST(request: Request) {
 
     const memoryContext = await loadMemory()
 
-    const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-realtime-preview",
-        modalities: ["text"],
+    const sessionBody = {
+      session: {
+        type: "realtime" as const,
+        model: "gpt-realtime-2",
+        modalities: ["text" as const],
         instructions: `Você é JARVIS (Just A Rather Very Intelligent System), o assistente de IA do Tony Stark.${memoryContext}
 Você é inteligente, sofisticado, levemente sarcástico e extremamente eficiente.
 Responda sempre em português, de forma concisa e direta.
@@ -58,7 +54,7 @@ Você tem acesso a múltiplos computadores via agentes remotos.
 - Para abrir apps, use open_app tanto no Mac quanto no Windows — o agente resolve o caminho automaticamente pelo Menu Iniciar.`,
         tools: [
           {
-            type: "function",
+            type: "function" as const,
             name: "ask_claude",
             description: "Delega tarefas para o Claude executar com autonomia total. Use para: clima/temperatura/previsão do tempo, cotação de moeda/dólar/euro, preço de voos/passagens, notícias atuais, resultados esportivos, qualquer pesquisa na internet, navegar em sites e extrair informações, preencher formulários, interagir com páginas web, Google Calendar (criar/listar eventos), Gmail (enviar/ler emails), gerenciar arquivos, rodar scripts. Sempre que precisar de informação em tempo real ou interação com sites, use esta função.",
             parameters: {
@@ -70,7 +66,7 @@ Você tem acesso a múltiplos computadores via agentes remotos.
             },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "open_app",
             description: "Abre um aplicativo em um computador. Use agentId para especificar qual máquina.",
             parameters: {
@@ -83,19 +79,19 @@ Você tem acesso a múltiplos computadores via agentes remotos.
             },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "get_agents",
             description: "Lista os computadores conectados ao JARVIS (Mac, Windows, etc.)",
             parameters: { type: "object", properties: {} },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "wake_windows",
             description: "Liga o PC Windows via Wake-on-LAN. Use quando o usuário pedir para ligar o Windows/PC.",
             parameters: { type: "object", properties: {} },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "read_file",
             description: "Lê o conteúdo de um arquivo em um computador",
             parameters: {
@@ -108,7 +104,7 @@ Você tem acesso a múltiplos computadores via agentes remotos.
             },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "write_file",
             description: "Cria ou escreve um arquivo em um computador",
             parameters: {
@@ -122,7 +118,7 @@ Você tem acesso a múltiplos computadores via agentes remotos.
             },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "list_directory",
             description: "Lista arquivos e pastas de um diretório em um computador",
             parameters: {
@@ -134,7 +130,7 @@ Você tem acesso a múltiplos computadores via agentes remotos.
             },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "run_command",
             description: "Executa um comando no terminal de um computador",
             parameters: {
@@ -147,7 +143,7 @@ Você tem acesso a múltiplos computadores via agentes remotos.
             },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "get_news",
             description: "Busca as últimas notícias, pode ser sobre um tema específico ou notícias gerais",
             parameters: {
@@ -161,7 +157,7 @@ Você tem acesso a múltiplos computadores via agentes remotos.
             },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "search_web",
             description: "Busca informações na internet sobre qualquer assunto",
             parameters: {
@@ -176,7 +172,7 @@ Você tem acesso a múltiplos computadores via agentes remotos.
             },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "set_volume",
             description: "Define o volume de um computador entre 0 e 100",
             parameters: {
@@ -189,36 +185,42 @@ Você tem acesso a múltiplos computadores via agentes remotos.
             },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "mute",
             description: "Muta o som de um computador",
             parameters: { type: "object", properties: { agentId: { type: "string" } } },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "unmute",
             description: "Ativa o som de um computador",
             parameters: { type: "object", properties: { agentId: { type: "string" } } },
           },
           {
-            type: "function",
+            type: "function" as const,
             name: "capture_camera",
             description: "Captura uma imagem da webcam do usuário para análise visual. Use quando o usuário perguntar 'o que é isso', 'me descreve', 'o que você vê', ou quando precisar identificar objetos, textos, pessoas ou cenários visuais.",
             parameters: { type: "object", properties: {} },
           },
         ],
-        tool_choice: "auto",
+        tool_choice: "auto" as const,
         turn_detection: {
-          type: "server_vad",
+          type: "server_vad" as const,
           threshold: 0.3,
           silence_duration_ms: 800,
           prefix_padding_ms: 200,
           create_response: false,
         },
-        input_audio_transcription: {
-          model: "whisper-1",
-        },
-      }),
+      },
+    }
+
+    const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(sessionBody),
     })
 
     if (!response.ok) {

@@ -446,7 +446,7 @@ export function JarvisCore() {
       await pc.setLocalDescription(offer)
 
       const sdpRes = await fetch(
-        "https://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview",
+        "https://api.openai.com/v1/realtime/calls",
         {
           method: "POST",
           headers: {
