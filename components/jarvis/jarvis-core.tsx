@@ -454,13 +454,13 @@ export function JarvisCore() {
       const pc = new RTCPeerConnection()
       pcRef.current = pc
 
-      // Audio output (Jarvis speaking)
-      const audioEl = document.createElement("audio")
-      audioEl.autoplay = true
-      audioElRef.current = audioEl
-      pc.ontrack = (e) => {
-        audioEl.srcObject = e.streams[0]
-      }
+      // Audio output desabilitado — usamos apenas ElevenLabs TTS
+      // const audioEl = document.createElement("audio")
+      // audioEl.autoplay = true
+      // audioElRef.current = audioEl
+      // pc.ontrack = (e) => {
+      //   audioEl.srcObject = e.streams[0]
+      // }
 
       // Mic input
       console.log("[JARVIS] Solicitando acesso ao microfone...")
