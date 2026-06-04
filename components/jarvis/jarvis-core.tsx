@@ -259,7 +259,8 @@ export function JarvisCore() {
         currentAssistantTranscriptRef.current = ""
         break
 
-      case "response.text.delta": {
+      case "response.text.delta":
+      case "response.output_audio_transcript.delta": {
         const delta = (event.delta as string) || ""
         currentAssistantTranscriptRef.current += delta
         setTranscript(currentAssistantTranscriptRef.current)
