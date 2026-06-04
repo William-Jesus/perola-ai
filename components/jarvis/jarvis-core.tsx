@@ -33,7 +33,6 @@ export function JarvisCore() {
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const dcRef = useRef<RTCDataChannel | null>(null)
-  const audioElRef = useRef<HTMLAudioElement | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const animationFrameRef = useRef<number | null>(null)
@@ -207,7 +206,6 @@ export function JarvisCore() {
 
   const handleRealtimeEvent = (event: Record<string, unknown>) => {
     const type = event.type as string
-    console.log("[JARVIS] Realtime event:", type, event)
 
     switch (type) {
       case "input_audio_buffer.speech_started":
@@ -468,13 +466,8 @@ export function JarvisCore() {
       const pc = new RTCPeerConnection()
       pcRef.current = pc
 
-      // Audio output do WebRTC desabilitado — usamos TTS (ElevenLabs/OpenAI)
-      // const audioEl = document.createElement("audio")
-      // audioEl.autoplay = true
-      // audioElRef.current = audioEl
-      // pc.ontrack = (e) => {
-      //   audioEl.srcObject = e.streams[0]
-      // }
+      // Não reproduzimos áudio do WebRTC — usamos ElevenLabs TTS
+      // pc.ontrack = (e) => { ... }
 
       // Mic input
       console.log("[JARVIS] Solicitando acesso ao microfone...")
