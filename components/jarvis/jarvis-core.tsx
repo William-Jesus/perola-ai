@@ -58,7 +58,8 @@ export function JarvisCore() {
   const reconnectAttemptsRef = useRef(0)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { keywordDetection, isLoaded: porcupineLoaded, init: porcupineInit, start: porcupineStart, stop: porcupineStop } = usePorcupine()
+  const { keywordDetection, isLoaded: porcupineLoaded, isListening: porcupineListening, error: porcupineError, init: porcupineInit, start: porcupineStart, stop: porcupineStop } = usePorcupine()
+  const lastProcessedDetectionRef = useRef<string | null>(null)
 
   useEffect(() => {
     stateRef.current = state
@@ -112,14 +113,27 @@ export function JarvisCore() {
     if (micTrackRef.current) micTrackRef.current.enabled = false
     if (wakeTimerRef.current) { clearTimeout(wakeTimerRef.current); wakeTimerRef.current = null }
     setState("idle")
-    porcupineStart().catch(() => {})
+    // Limpa ref para permitir nova detecção do wake word
+    lastProcessedDetectionRef.current = null
+    console.log("[JARVIS] Wake desativado, reiniciando Porcupine em 200ms...")
+    // Pequeno delay para garantir que WebVoiceProcessor liberou o mic
+    setTimeout(() => {
+      porcupineStart().catch((e) => console.error("[JARVIS] Erro ao reiniciar Porcupine:", e))
+    }, 200)
   }, [porcupineStart])
 
   const activateWake = useCallback(() => {
     wakeWordActiveRef.current = true
     setIsAwake(true)
-    if (micTrackRef.current) micTrackRef.current.enabled = true
-    porcupineStop().catch(() => {})
+    // Resume AudioContext se estiver suspenso (política de autoplay)
+    if (audioContextRef.current?.state === "suspended") {
+      audioContextRef.current.resume().catch(() => {})
+    }
+    if (micTrackRef.current) {
+      micTrackRef.current.enabled = true
+      console.log("[JARVIS] Mic habilitado, estado: awake")
+    }
+    porcupineStop().catch((e) => console.error("[JARVIS] Erro ao parar Porcupine:", e))
     setState("listening")
     if (wakeTimerRef.current) clearTimeout(wakeTimerRef.current)
     wakeTimerRef.current = setTimeout(deactivateWake, WAKE_TIMEOUT)
@@ -143,10 +157,27 @@ export function JarvisCore() {
     }
   }, [porcupineLoaded, connected, porcupineStart])
 
-  // Handle Porcupine detection
+  // Log Porcupine state changes para debug
+  useEffect(() => {
+    if (porcupineError) {
+      console.error("[JARVIS] Porcupine error:", porcupineError)
+    }
+  }, [porcupineError])
+
+  useEffect(() => {
+    console.log("[JARVIS] Porcupine loaded:", porcupineLoaded, "listening:", porcupineListening)
+  }, [porcupineLoaded, porcupineListening])
+
+  // Handle Porcupine detection — usa ref para permitir múltiplas detecções
+  // já que o hook usePorcupine nunca limpa keywordDetection
   useEffect(() => {
     if (keywordDetection !== null && !wakeWordActiveRef.current) {
-      activateWake()
+      const detectionKey = `${keywordDetection.label}-${keywordDetection.index}`
+      if (detectionKey !== lastProcessedDetectionRef.current) {
+        lastProcessedDetectionRef.current = detectionKey
+        console.log("[JARVIS] Wake word detectado:", keywordDetection.label)
+        activateWake()
+      }
     }
   }, [keywordDetection, activateWake])
 
@@ -334,6 +365,10 @@ export function JarvisCore() {
       const cleanup = () => {
         ttsAudioRef.current = null
         URL.revokeObjectURL(audioUrl)
+        // Resume AudioContext se necessário antes de reabilitar o mic
+        if (audioContextRef.current?.state === "suspended") {
+          audioContextRef.current.resume().catch(() => {})
+        }
         // Follow-up window: keep mic active for 8s so user can respond naturally
         if (micTrackRef.current) micTrackRef.current.enabled = true
         setState("listening")
@@ -404,6 +439,7 @@ export function JarvisCore() {
       }
 
       // Mic input
+      console.log("[JARVIS] Solicitando acesso ao microfone...")
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -411,12 +447,14 @@ export function JarvisCore() {
           autoGainControl: true,
         },
       })
+      console.log("[JARVIS] Microfone concedido, tracks:", stream.getTracks().length)
       setMicPermission("granted")
       const processedStream = startAudioVisualizer(stream)
       const micTrack = processedStream.getTracks()[0]
       micTrackRef.current = micTrack
       micTrack.enabled = false // Start muted — wake word activates it
       pc.addTrack(micTrack)
+      console.log("[JARVIS] Track adicionada ao PeerConnection")
 
       // Data channel for events
       const dc = pc.createDataChannel("oai-events")
@@ -537,6 +575,10 @@ export function JarvisCore() {
   }
 
   const handleActivate = () => {
+    // Resume AudioContext em resposta a interação do usuário (política de autoplay)
+    if (audioContextRef.current?.state === "suspended") {
+      audioContextRef.current.resume().catch(() => {})
+    }
     if (!connected) {
       connect()
     }
