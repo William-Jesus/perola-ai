@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
-import { usePorcupine } from "@picovoice/porcupine-react"
-import { BuiltInKeyword } from "@picovoice/porcupine-web"
+// Wake word via Web Speech API (não precisa de chave externa)
 import { VoiceVisualizer } from "./voice-visualizer"
 import { StatusIndicator } from "./status-indicator"
 import { ConversationPanel } from "./conversation-panel"
@@ -58,8 +57,8 @@ export function JarvisCore() {
   const reconnectAttemptsRef = useRef(0)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { keywordDetection, isLoaded: porcupineLoaded, isListening: porcupineListening, error: porcupineError, init: porcupineInit, start: porcupineStart, stop: porcupineStop } = usePorcupine()
-  const lastProcessedDetectionRef = useRef<string | null>(null)
+  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const isListeningRef = useRef(false)
 
   useEffect(() => {
     stateRef.current = state
@@ -106,6 +105,66 @@ export function JarvisCore() {
     }
   }
 
+  // --- Wake Word via Web Speech API ---
+  const stopWakeWordListener = useCallback(() => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop()
+      } catch {}
+      recognitionRef.current = null
+      isListeningRef.current = false
+      console.log("[JARVIS] Wake word listener parado")
+    }
+  }, [])
+
+  const startWakeWordListener = useCallback(() => {
+    if (isListeningRef.current) return
+    if (typeof window === "undefined") return
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      console.error("[JARVIS] SpeechRecognition não suportado neste navegador")
+      return
+    }
+    try {
+      const recognition = new SpeechRecognition()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = "pt-BR"
+      recognitionRef.current = recognition
+      isListeningRef.current = true
+
+      recognition.onresult = (event: any) => {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript.toLowerCase().trim()
+          if ((transcript.includes("jarvis") || transcript.includes("jarvi")) && !wakeWordActiveRef.current) {
+            console.log("[JARVIS] Wake word detectado via SpeechRecognition:", transcript)
+            activateWakeRef.current?.()
+          }
+        }
+      }
+
+      recognition.onerror = (event: any) => {
+        if (event.error === "no-speech" || event.error === "aborted") return
+        console.error("[JARVIS] SpeechRecognition error:", event.error)
+      }
+
+      recognition.onend = () => {
+        isListeningRef.current = false
+        if (!wakeWordActiveRef.current) {
+          console.log("[JARVIS] SpeechRecognition encerrou, reiniciando...")
+          setTimeout(() => startWakeWordListener(), 300)
+        }
+      }
+
+      recognition.start()
+      console.log("[JARVIS] Wake word listener iniciado (SpeechRecognition)")
+    } catch (e) {
+      console.error("[JARVIS] Erro ao iniciar SpeechRecognition:", e)
+    }
+  }, [])
+
+  const activateWakeRef = useRef<(() => void) | null>(null)
+
   const deactivateWake = useCallback(() => {
     wakeWordActiveRef.current = false
     setIsAwake(false)
@@ -113,14 +172,9 @@ export function JarvisCore() {
     if (micTrackRef.current) micTrackRef.current.enabled = false
     if (wakeTimerRef.current) { clearTimeout(wakeTimerRef.current); wakeTimerRef.current = null }
     setState("idle")
-    // Limpa ref para permitir nova detecção do wake word
-    lastProcessedDetectionRef.current = null
-    console.log("[JARVIS] Wake desativado, reiniciando Porcupine em 200ms...")
-    // Pequeno delay para garantir que WebVoiceProcessor liberou o mic
-    setTimeout(() => {
-      porcupineStart().catch((e) => console.error("[JARVIS] Erro ao reiniciar Porcupine:", e))
-    }, 200)
-  }, [porcupineStart])
+    console.log("[JARVIS] Wake desativado, reiniciando wake word listener...")
+    startWakeWordListener()
+  }, [startWakeWordListener])
 
   const activateWake = useCallback(() => {
     wakeWordActiveRef.current = true
@@ -133,53 +187,23 @@ export function JarvisCore() {
       micTrackRef.current.enabled = true
       console.log("[JARVIS] Mic habilitado, estado: awake")
     }
-    porcupineStop().catch((e) => console.error("[JARVIS] Erro ao parar Porcupine:", e))
+    stopWakeWordListener()
     setState("listening")
     if (wakeTimerRef.current) clearTimeout(wakeTimerRef.current)
     wakeTimerRef.current = setTimeout(deactivateWake, WAKE_TIMEOUT)
-  }, [porcupineStop, deactivateWake])
+  }, [stopWakeWordListener, deactivateWake])
 
-  // Porcupine wake word detection — initialized once connection is established
   useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_PICOVOICE_KEY
-    if (!key || porcupineLoaded) return
-    porcupineInit(
-      key,
-      [{ builtin: BuiltInKeyword.Jarvis, sensitivity: 0.6 }],
-      { publicPath: "/porcupine/porcupine_params.pv" }
-    ).catch(console.error)
-  }, [porcupineLoaded, porcupineInit])
+    activateWakeRef.current = activateWake
+  }, [activateWake])
 
-  // Start listening for wake word when connected
+  // Inicia wake word listener quando conectado
   useEffect(() => {
-    if (porcupineLoaded && connected && !wakeWordActiveRef.current) {
-      porcupineStart().catch(console.error)
+    if (connected && !wakeWordActiveRef.current) {
+      startWakeWordListener()
     }
-  }, [porcupineLoaded, connected, porcupineStart])
-
-  // Log Porcupine state changes para debug
-  useEffect(() => {
-    if (porcupineError) {
-      console.error("[JARVIS] Porcupine error:", porcupineError)
-    }
-  }, [porcupineError])
-
-  useEffect(() => {
-    console.log("[JARVIS] Porcupine loaded:", porcupineLoaded, "listening:", porcupineListening)
-  }, [porcupineLoaded, porcupineListening])
-
-  // Handle Porcupine detection — usa ref para permitir múltiplas detecções
-  // já que o hook usePorcupine nunca limpa keywordDetection
-  useEffect(() => {
-    if (keywordDetection !== null && !wakeWordActiveRef.current) {
-      const detectionKey = `${keywordDetection.label}-${keywordDetection.index}`
-      if (detectionKey !== lastProcessedDetectionRef.current) {
-        lastProcessedDetectionRef.current = detectionKey
-        console.log("[JARVIS] Wake word detectado:", keywordDetection.label)
-        activateWake()
-      }
-    }
-  }, [keywordDetection, activateWake])
+    return () => stopWakeWordListener()
+  }, [connected, startWakeWordListener, stopWakeWordListener])
 
   const handleRealtimeEvent = (event: Record<string, unknown>) => {
     const type = event.type as string
@@ -469,7 +493,7 @@ export function JarvisCore() {
       dc.onclose = () => {
         setConnected(false)
         setState("idle")
-        porcupineStop().catch(() => {})
+        stopWakeWordListener()
         scheduleReconnect()
       }
       pc.onconnectionstatechange = () => {
