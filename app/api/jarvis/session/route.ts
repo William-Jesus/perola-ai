@@ -37,6 +37,11 @@ export async function POST(request: Request) {
       session: {
         type: "realtime" as const,
         model: "gpt-realtime-2",
+        audio: {
+          output: {
+            voice: "marin",
+          },
+        },
         instructions: `Você é JARVIS (Just A Rather Very Intelligent System), o assistente de IA do Tony Stark.${memoryContext}
 Você é inteligente, sofisticado, levemente sarcástico e extremamente eficiente.
 Responda sempre em português, de forma concisa e direta.

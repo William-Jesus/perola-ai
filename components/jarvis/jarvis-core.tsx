@@ -207,6 +207,7 @@ export function JarvisCore() {
 
   const handleRealtimeEvent = (event: Record<string, unknown>) => {
     const type = event.type as string
+    console.log("[JARVIS] Realtime event:", type, event)
 
     switch (type) {
       case "input_audio_buffer.speech_started":
