@@ -305,17 +305,7 @@ export function JarvisCore() {
               timestamp: new Date(),
             },
           ])
-          // Economiza ElevenLabs — usa voz do GPT Realtime (grátis via WebRTC)
-          // speakWithElevenLabs(fullText)
-          // Após TTS via WebRTC, entra no modo follow-up
-          if (micTrackRef.current) micTrackRef.current.enabled = true
-          setState("listening")
-          setIsFollowUp(true)
-          if (wakeTimerRef.current) clearTimeout(wakeTimerRef.current)
-          wakeTimerRef.current = setTimeout(() => {
-            setIsFollowUp(false)
-            deactivateWake()
-          }, FOLLOWUP_TIMEOUT)
+          speakWithElevenLabs(fullText)
         } else {
           deactivateWake()
         }
@@ -464,13 +454,13 @@ export function JarvisCore() {
       const pc = new RTCPeerConnection()
       pcRef.current = pc
 
-      // Audio output (Jarvis speaking via OpenAI Realtime — grátis)
-      const audioEl = document.createElement("audio")
-      audioEl.autoplay = true
-      audioElRef.current = audioEl
-      pc.ontrack = (e) => {
-        audioEl.srcObject = e.streams[0]
-      }
+      // Audio output do WebRTC desabilitado — usamos TTS (ElevenLabs/OpenAI)
+      // const audioEl = document.createElement("audio")
+      // audioEl.autoplay = true
+      // audioElRef.current = audioEl
+      // pc.ontrack = (e) => {
+      //   audioEl.srcObject = e.streams[0]
+      // }
 
       // Mic input
       console.log("[JARVIS] Solicitando acesso ao microfone...")
