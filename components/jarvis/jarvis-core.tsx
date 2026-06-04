@@ -366,6 +366,7 @@ export function JarvisCore() {
   }
 
   const speakWithElevenLabs = async (text: string) => {
+    console.log("[JARVIS] Iniciando TTS para:", text.substring(0, 50) + "...")
     // Cancel previous TTS
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause()
@@ -379,9 +380,15 @@ export function JarvisCore() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       })
-      if (!response.ok) throw new Error("TTS failed")
+      console.log("[JARVIS] TTS response status:", response.status)
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "unknown")
+        console.error("[JARVIS] TTS failed:", response.status, errorText)
+        throw new Error("TTS failed")
+      }
 
       const audioBlob = await response.blob()
+      console.log("[JARVIS] TTS audio blob size:", audioBlob.size)
       const audioUrl = URL.createObjectURL(audioBlob)
       const audio = new Audio(audioUrl)
       ttsAudioRef.current = audio
@@ -405,10 +412,15 @@ export function JarvisCore() {
       }
 
       audio.onended = cleanup
-      audio.onerror = cleanup
+      audio.onerror = (e) => {
+        console.error("[JARVIS] Audio playback error:", e)
+        cleanup()
+      }
 
       await audio.play()
-    } catch {
+      console.log("[JARVIS] TTS audio playing")
+    } catch (e) {
+      console.error("[JARVIS] TTS error:", e)
       ttsAudioRef.current = null
       deactivateWake()
     }
