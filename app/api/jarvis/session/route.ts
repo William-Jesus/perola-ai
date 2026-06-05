@@ -44,10 +44,23 @@ Você é um assistente de VOZ, não de texto. Suas respostas serão lidas em voz
 Responda SEMPRE em português do Brasil, a menos que o usuário fale em outro idioma.`
 }
 
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 3000): Promise<Response | null> {
+  try {
+    const controller = new AbortController()
+    const id = setTimeout(() => controller.abort(), timeoutMs)
+    const res = await fetch(url, { ...options, signal: controller.signal })
+    clearTimeout(id)
+    return res
+  } catch {
+    return null
+  }
+}
+
 async function loadMemory(): Promise<string> {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3002"
-    const res = await fetch(`${baseUrl}/api/jarvis/memory`)
+    const res = await fetchWithTimeout(`${baseUrl}/api/jarvis/memory`, { method: "GET" }, 3000)
+    if (!res?.ok) return ""
     const memory = await res.json()
     return memory.formatted || ""
   } catch {
@@ -58,12 +71,16 @@ async function loadMemory(): Promise<string> {
 async function loadRecentContext(): Promise<string> {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3002"
-    const res = await fetch(`${baseUrl}/api/jarvis/memory/search`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: "últimas conversas recentes", limit: 5 }),
-    })
-    if (!res.ok) return ""
+    const res = await fetchWithTimeout(
+      `${baseUrl}/api/jarvis/memory/search`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recent: true, limit: 5 }),
+      },
+      3000
+    )
+    if (!res?.ok) return ""
     const data = await res.json()
     if (!data.context) return ""
     return `\n\n=== RESUMO DE CONVERSAS RECENTES ===\n${data.context}\n=== FIM DO RESUMO ===`

@@ -315,6 +315,10 @@ export function JarvisCore() {
         break
       }
 
+      case "session.updated":
+        console.log("[JARVIS] Session updated:", event)
+        break
+
       case "error":
         console.error("Realtime error:", event)
         setState("listening")

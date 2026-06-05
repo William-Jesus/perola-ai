@@ -62,7 +62,31 @@ export async function POST(request: Request) {
   if (!rl.allowed) return rl.response
 
   try {
-    const { query, limit = 3 } = await request.json()
+    const { query, limit = 3, recent = false } = await request.json()
+
+    const index = await readIndex()
+    if (!index.entries.length) {
+      return NextResponse.json({ context: "", entries: [] })
+    }
+
+    // Fast path: just return the N most recent conversations, no embeddings needed
+    if (recent === true) {
+      const recentEntries = [...index.entries]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, limit)
+
+      if (!recentEntries.length) {
+        return NextResponse.json({ context: "", entries: [] })
+      }
+
+      const context = recentEntries.map((e) => `- ${e.summary}`).join("\n")
+      return NextResponse.json({
+        context,
+        recent: true,
+        entries: recentEntries.map((e) => ({ id: e.id, summary: e.summary })),
+      })
+    }
+
     if (!query || typeof query !== "string") {
       return NextResponse.json({ error: "Query is required" }, { status: 400 })
     }
@@ -72,21 +96,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No API key" }, { status: 500 })
     }
 
-    const index = await readIndex()
-    if (!index.entries.length) {
-      return NextResponse.json({ context: "", entries: [] })
-    }
-
-    // Lazy-compute missing embeddings
+    // Lazy-compute missing embeddings, but cap at 5 per request to avoid long delays
     let needsWrite = false
-    for (const entry of index.entries) {
-      if (!entry.embedding) {
-        try {
-          entry.embedding = await getEmbedding(entry.summary, apiKey)
-          needsWrite = true
-        } catch {
-          // Skip entries that fail embedding
-        }
+    const entriesMissingEmbedding = index.entries.filter((e) => !e.embedding).slice(0, 5)
+    for (const entry of entriesMissingEmbedding) {
+      try {
+        entry.embedding = await getEmbedding(entry.summary, apiKey)
+        needsWrite = true
+      } catch {
+        // Skip entries that fail embedding
       }
     }
 
