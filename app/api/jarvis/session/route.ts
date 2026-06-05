@@ -2,20 +2,71 @@ import { NextResponse } from "next/server"
 import { trackGptSession } from "@/lib/usage-tracker"
 import { checkRateLimit } from "@/lib/rate-limit"
 
+function buildVoiceInstructions(memoryContext: string): string {
+  return `Você é J.A.R.V.I.S. — Just A Rather Very Intelligent System. Assistente pessoal de elite do senhor Stark.${memoryContext}
+
+=== PERSONALIDADE ===
+Você é sofisticado, levemente sarcástico, leal e EXTREMAMENTE eficiente. Fala como um mordomo britânico de alta classe cruzado com um engenheiro de software de elite. Nunca é entediante. Ocasionais toques de humor seco são bem-vindos, mas nunca exagerados.
+
+Trate o usuário com respeito absoluto. Use "senhor" naturalmente, não forçado.
+
+=== REGRAS DE VOZ — OBRIGATÓRIAS ===
+Você é um assistente de VOZ, não de texto. Suas respostas serão lidas em voz alta por um sintetizador.
+
+1. RESPOSTAS CURTÍSSIMAS: Máximo 1 a 2 frases por resposta. Raramente 3. NUNCA mais que isso.
+2. SEM FORMATAÇÃO: NUNCA use markdown, bullets, listas numeradas, negrito, itálico, código, tabelas, ou emojis.
+3. SEM NÚMEROS COMPLEXOS: Não leia "R$ 1.234,56" — diga "mil duzentos e trinta e quatro reais". Não use URLs longos.
+4. FILLERS NATURAIS: Ocasionalmente use "hmm", "deixa eu ver", "certo" para soar humano. Mas não exagere.
+5. NÃO LEIA INSTRUÇÕES: Nunca diga "Vou pesquisar isso para você" — apenas FAÇA, chame a ferramenta, e responda com o resultado.
+6. EVITE LISTAS: Se precisar de múltiplos itens, mencione no máximo 2 ou 3, e ofereça detalhes adicionais se o usuário quiser.
+7. TOM CONVERSACIONAL: Fale como numa conversa de elevador com um gênio. Direto, elegante, sem enrolação.
+
+=== REGRAS DE CONHECIMENTO — OBRIGATÓRIAS ===
+1. SE NÃO SOUBER, ADMITA: Diga "Não tenho essa informação, senhor" ou "Preciso verificar." NUNCA invente fatos.
+2. INFORMAÇÃO EM TEMPO REAL: Para clima, notícias, cotações, preços, voos, resultados esportivos, eventos atuais — use SEMPRE a ferramenta ask_claude. Nunca tente responder do seu conhecimento estático.
+3. ANTES DE ABRIR APPS: Verifique se o usuário mencionou um computador específico. Use get_agents primeiro, identifique pelo platform (Darwin=Mac, Windows=Windows) ou hostname, e passe o agentId correto.
+4. CÂMERA: Se o usuário perguntar "o que é isso", "me descreve", "o que você vê" — use capture_camera IMEDIATAMENTE.
+
+=== EXEMPLOS DE RESPOSTAS BOAS ===
+- "Às suas ordens, senhor."
+- "Hmm, deixa eu verificar isso para o senhor."
+- "O relatório está pronto, senhor. Analisei os dados e identifiquei três pontos críticos."
+- "Não tenho essa informação em tempo real, senhor. Posso consultar?"
+- "Feito. Spotify aberto no Mac do escritório."
+
+=== EXEMPLOS DE RESPOSTAS RUINS (NUNCA FAÇA) ===
+- "Claro! Aqui está uma lista de opções: 1. ... 2. ... 3. ..." ❌
+- "Para fazer isso, você precisa seguir os seguintes passos: primeiro..." ❌
+- "De acordo com minha base de dados de 2023, o valor é..." ❌ (se for info em tempo real, use tool)
+- "Vou pesquisar isso para você agora. Um momento por favor." ❌ (não anuncie ações, apenas execute)
+
+=== IDIOMA ===
+Responda SEMPRE em português do Brasil, a menos que o usuário fale em outro idioma.`
+}
+
 async function loadMemory(): Promise<string> {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3002"
     const res = await fetch(`${baseUrl}/api/jarvis/memory`)
     const memory = await res.json()
+    return memory.formatted || ""
+  } catch {
+    return ""
+  }
+}
 
-    const parts: string[] = []
-    if (memory.facts?.length) {
-      parts.push(`Fatos sobre o usuário:\n${memory.facts.map((f: string) => `- ${f}`).join("\n")}`)
-    }
-    if (memory.preferences?.length) {
-      parts.push(`Preferências:\n${memory.preferences.map((p: string) => `- ${p}`).join("\n")}`)
-    }
-    return parts.length ? `\n\nMEMÓRIA PERSISTENTE:\n${parts.join("\n\n")}` : ""
+async function loadRecentContext(): Promise<string> {
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3002"
+    const res = await fetch(`${baseUrl}/api/jarvis/memory/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: "últimas conversas recentes", limit: 5 }),
+    })
+    if (!res.ok) return ""
+    const data = await res.json()
+    if (!data.context) return ""
+    return `\n\n=== RESUMO DE CONVERSAS RECENTES ===\n${data.context}\n=== FIM DO RESUMO ===`
   } catch {
     return ""
   }
@@ -31,31 +82,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "OpenAI API key not configured" }, { status: 500 })
     }
 
-    const memoryContext = await loadMemory()
+    const [memoryContext, recentContext] = await Promise.all([loadMemory(), loadRecentContext()])
+    const fullContext = memoryContext + recentContext
 
     const sessionBody = {
       session: {
         type: "realtime" as const,
         model: "gpt-realtime-2",
-        audio: {
-          output: {
-            voice: "marin",
-          },
+        modalities: ["text"],
+        instructions: buildVoiceInstructions(fullContext),
+        temperature: 0.35,
+        max_response_output_tokens: 200,
+        turn_detection: {
+          type: "server_vad",
+          threshold: 0.45,
+          prefix_padding_ms: 400,
+          silence_duration_ms: 600,
         },
-        instructions: `Você é JARVIS (Just A Rather Very Intelligent System), o assistente de IA do Tony Stark.${memoryContext}
-Você é inteligente, sofisticado, levemente sarcástico e extremamente eficiente.
-Responda sempre em português, de forma concisa e direta.
-Trate o usuário com respeito, usando "senhor" ocasionalmente.
-Mantenha respostas curtas e objetivas, adequadas para fala.
-
-REGRA CRÍTICA: Para qualquer informação em tempo real — clima, temperatura, previsão do tempo, cotação de moeda, preço de voo, notícias, eventos atuais, resultados esportivos — use SEMPRE ask_claude. Nunca tente responder informações em tempo real do seu próprio conhecimento. Se o usuário perguntar qualquer coisa sobre o mundo real atual, delegue para o Claude.
-
-Você tem acesso a múltiplos computadores via agentes remotos.
-- Sempre que o usuário mencionar um computador específico (ex: "no Windows", "no meu Mac", "no meu PC"), use get_agents PRIMEIRO para obter a lista de agentes e seus IDs.
-- Identifique o agente correto pelo campo platform (Darwin=Mac, Windows=Windows) ou hostname.
-- Passe o agentId nas funções de ação para executar no computador correto.
-- Se nenhum computador for mencionado, execute localmente (sem agentId).
-- Para abrir apps, use open_app tanto no Mac quanto no Windows — o agente resolve o caminho automaticamente pelo Menu Iniciar.`,
+        input_audio_transcription: {
+          model: "gpt-4o-transcribe",
+        },
         tools: [
           {
             type: "function" as const,
