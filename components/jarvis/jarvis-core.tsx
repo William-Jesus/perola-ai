@@ -315,10 +315,6 @@ export function JarvisCore() {
         break
       }
 
-      case "session.updated":
-        console.log("[JARVIS] Session updated:", event)
-        break
-
       case "error":
         console.error("Realtime error:", event)
         setState("listening")
@@ -463,11 +459,7 @@ export function JarvisCore() {
     try {
       // Get ephemeral token
       const sessionRes = await fetch("/api/jarvis/session", { method: "POST" })
-      if (!sessionRes.ok) {
-        const errorBody = await sessionRes.text().catch(() => "unknown")
-        console.error("[JARVIS] Session request failed:", sessionRes.status, errorBody)
-        throw new Error(`Failed to get session: ${sessionRes.status} — ${errorBody.slice(0, 200)}`)
-      }
+      if (!sessionRes.ok) throw new Error("Failed to get session")
       const { client_secret } = await sessionRes.json()
 
       // Set up WebRTC
@@ -504,30 +496,6 @@ export function JarvisCore() {
         setReconnecting(false)
         reconnectAttemptsRef.current = 0
         setState("idle")
-
-        // TODO: session.update with modalities=["text"] may be causing connection issues.
-        // Re-enable after confirming the Realtime API accepts it in this context.
-        // Configure advanced session params via session.update
-        // (client_secrets doesn't accept these, but data channel does)
-        // try {
-        //   dc.send(JSON.stringify({
-        //     type: "session.update",
-        //     session: {
-        //       modalities: ["text"],
-        //       temperature: 0.35,
-        //       max_response_output_tokens: 200,
-        //       turn_detection: {
-        //         type: "server_vad",
-        //         threshold: 0.45,
-        //         prefix_padding_ms: 400,
-        //         silence_duration_ms: 600,
-        //       },
-        //     },
-        //   }))
-        //   console.log("[JARVIS] session.update sent (modalities=[text])")
-        // } catch (e) {
-        //   console.error("[JARVIS] Failed to send session.update:", e)
-        // }
       }
       dc.onclose = () => {
         setConnected(false)
@@ -596,7 +564,7 @@ export function JarvisCore() {
       await fetch("/api/jarvis/memory", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: msgs, conversationId }),
+        body: JSON.stringify({ messages: msgs }),
       })
     } catch {}
   }
