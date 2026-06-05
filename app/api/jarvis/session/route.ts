@@ -89,18 +89,14 @@ export async function POST(request: Request) {
       session: {
         type: "realtime" as const,
         model: "gpt-realtime-2",
-        modalities: ["text"],
         instructions: buildVoiceInstructions(fullContext),
-        temperature: 0.35,
-        max_response_output_tokens: 200,
-        turn_detection: {
-          type: "server_vad",
-          threshold: 0.45,
-          prefix_padding_ms: 400,
-          silence_duration_ms: 600,
+        audio: {
+          output: {
+            voice: process.env.REALTIME_VOICE || "marin",
+          },
         },
         input_audio_transcription: {
-          model: "gpt-4o-transcribe",
+          model: "whisper-1",
         },
         tools: [
           {
@@ -266,9 +262,12 @@ export async function POST(request: Request) {
     })
 
     if (!response.ok) {
-      const error = await response.text()
-      console.error("Session error:", error)
-      throw new Error("Failed to create session")
+      const errorText = await response.text()
+      console.error("[JARVIS] Session creation failed:", response.status, errorText)
+      return NextResponse.json(
+        { error: `Realtime session failed: ${response.status} — ${errorText}`.slice(0, 500) },
+        { status: 502 }
+      )
     }
 
     const data = await response.json()
@@ -276,6 +275,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ client_secret: { value: data.value } })
   } catch (error) {
     console.error("Session error:", error)
-    return NextResponse.json({ error: "Failed to create session" }, { status: 500 })
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return NextResponse.json({ error: `Failed to create session: ${message}`.slice(0, 500) }, { status: 500 })
   }
 }
