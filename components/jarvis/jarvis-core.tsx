@@ -505,27 +505,29 @@ export function JarvisCore() {
         reconnectAttemptsRef.current = 0
         setState("idle")
 
+        // TODO: session.update with modalities=["text"] may be causing connection issues.
+        // Re-enable after confirming the Realtime API accepts it in this context.
         // Configure advanced session params via session.update
         // (client_secrets doesn't accept these, but data channel does)
-        try {
-          dc.send(JSON.stringify({
-            type: "session.update",
-            session: {
-              modalities: ["text"],
-              temperature: 0.35,
-              max_response_output_tokens: 200,
-              turn_detection: {
-                type: "server_vad",
-                threshold: 0.45,
-                prefix_padding_ms: 400,
-                silence_duration_ms: 600,
-              },
-            },
-          }))
-          console.log("[JARVIS] session.update sent (modalities=[text])")
-        } catch (e) {
-          console.error("[JARVIS] Failed to send session.update:", e)
-        }
+        // try {
+        //   dc.send(JSON.stringify({
+        //     type: "session.update",
+        //     session: {
+        //       modalities: ["text"],
+        //       temperature: 0.35,
+        //       max_response_output_tokens: 200,
+        //       turn_detection: {
+        //         type: "server_vad",
+        //         threshold: 0.45,
+        //         prefix_padding_ms: 400,
+        //         silence_duration_ms: 600,
+        //       },
+        //     },
+        //   }))
+        //   console.log("[JARVIS] session.update sent (modalities=[text])")
+        // } catch (e) {
+        //   console.error("[JARVIS] Failed to send session.update:", e)
+        // }
       }
       dc.onclose = () => {
         setConnected(false)
