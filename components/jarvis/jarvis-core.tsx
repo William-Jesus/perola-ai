@@ -42,6 +42,10 @@ export function JarvisCore() {
   const isRespondingRef = useRef(false)
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null)
   const micTrackRef = useRef<MediaStreamTrack | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const currentSpeakerRef = useRef<{ name: string; relationship?: string } | null>(null)
   const wakeWordActiveRef = useRef(false)
   const wakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [isAwake, setIsAwake] = useState(false)
@@ -204,6 +208,75 @@ export function JarvisCore() {
     return () => stopWakeWordListener()
   }, [connected, startWakeWordListener, stopWakeWordListener])
 
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(reader.result as string)
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  const startVoiceRecording = () => {
+    if (!streamRef.current) return
+    try {
+      const recorder = new MediaRecorder(streamRef.current, { mimeType: "audio/webm;codecs=opus" })
+      audioChunksRef.current = []
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
+      recorder.start(100)
+      mediaRecorderRef.current = recorder
+      console.log("[JARVIS] Voice recording started for speaker identification")
+    } catch (e) {
+      console.error("[JARVIS] Failed to start voice recording:", e)
+    }
+  }
+
+  const stopVoiceRecordingAndIdentify = async () => {
+    const recorder = mediaRecorderRef.current
+    if (!recorder) return
+    mediaRecorderRef.current = null
+
+    return new Promise<void>((resolve) => {
+      recorder.onstop = async () => {
+        try {
+          const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
+          if (blob.size < 1024) { resolve(); return }
+
+          const base64 = await blobToBase64(blob)
+          console.log("[JARVIS] Identifying speaker...")
+
+          const res = await fetch("/api/jarvis/voice/identify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ audioBase64: base64 }),
+          })
+
+          const data = await res.json()
+          if (data.identified && data.speaker) {
+            console.log("[JARVIS] Speaker identified:", data.speaker.name)
+            currentSpeakerRef.current = {
+              name: data.speaker.name,
+              relationship: data.speaker.relationship,
+            }
+            if (data.suggestedInstructions && dcRef.current?.readyState === "open") {
+              dcRef.current.send(JSON.stringify({
+                type: "session.update",
+                session: { instructions: data.suggestedInstructions },
+              }))
+            }
+          } else {
+            console.log("[JARVIS] Speaker not identified (confidence:", data.confidence, ")")
+          }
+        } catch (err) {
+          console.error("[JARVIS] Voice identification error:", err)
+        }
+        resolve()
+      }
+      recorder.stop()
+    })
+  }
+
   const handleRealtimeEvent = (event: Record<string, unknown>) => {
     const type = event.type as string
 
@@ -211,6 +284,7 @@ export function JarvisCore() {
       case "input_audio_buffer.speech_started":
         setState("listening")
         currentUserTranscriptRef.current = ""
+        startVoiceRecording()
         // Barge-in: user started speaking, cancel any ongoing response/TTS
         if (isRespondingRef.current) {
           cancelResponse()
@@ -225,6 +299,7 @@ export function JarvisCore() {
 
       case "input_audio_buffer.speech_stopped":
         setState("thinking")
+        stopVoiceRecordingAndIdentify()
         break
 
       case "conversation.item.input_audio_transcription.completed": {
@@ -478,6 +553,7 @@ export function JarvisCore() {
           autoGainControl: true,
         },
       })
+      streamRef.current = stream
       console.log("[JARVIS] Microfone concedido, tracks:", stream.getTracks().length)
       setMicPermission("granted")
       const processedStream = startAudioVisualizer(stream)
