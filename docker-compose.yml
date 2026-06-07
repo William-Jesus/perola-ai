@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  jarvis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jarvis-ai
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    volumes:
+      # Persist voice profiles and data
+      - ./data:/app/data
+      # Persist speechbrain model cache
+      - speechbrain-cache:/app/.cache/speechbrain
+    networks:
+      - jarvis-net
+
+  # Optional: Redis for future rate limiting scaling
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: jarvis-redis
+  #   restart: unless-stopped
+  #   volumes:
+  #     - redis-data:/data
+  #   networks:
+  #     - jarvis-net
+
+volumes:
+  speechbrain-cache:
+  # redis-data:
+
+networks:
+  jarvis-net:
+    driver: bridge
