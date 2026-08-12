@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { buildPerolaPrompt, EXPRESSOES } from "@/lib/perola/prompt"
 import { getFatos } from "@/lib/perola/memoria"
+import { codigoValido, respostaNaoAutorizada } from "@/lib/perola/auth"
 
 /**
  * Sessão de voz da Pérola (OpenAI Realtime).
@@ -22,6 +23,8 @@ const NOME = process.env.PEROLA_NOME || "amiga"
 const IDADE = Number(process.env.PEROLA_IDADE) || 9
 
 export async function POST(request: Request) {
+  if (!codigoValido(request)) return respostaNaoAutorizada()
+
   const rl = checkRateLimit(request, "perola-session", 10)
   if (!rl.allowed) return rl.response
 

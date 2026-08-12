@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { checkRateLimit } from "@/lib/rate-limit"
+import { codigoValido, respostaNaoAutorizada } from "@/lib/perola/auth"
 
 /**
  * Os olhos da Pérola.
@@ -10,6 +11,8 @@ import { checkRateLimit } from "@/lib/rate-limit"
  * Quem conduz é a Pérola, com o enunciado em mãos.
  */
 export async function POST(request: Request) {
+  if (!codigoValido(request)) return respostaNaoAutorizada()
+
   const rl = checkRateLimit(request, "perola-ver", 20)
   if (!rl.allowed) return rl.response
 

@@ -107,6 +107,7 @@ renovação do certificado. **Importante:** o WebSocket do WebRTC precisa do
 | Variável | Descrição |
 |----------|-----------|
 | `OPENAI_API_KEY` | Chave da OpenAI (Realtime + gpt-4o vision) |
+| `PEROLA_ACCESS_CODE` | Código de acesso — sem ele, toda rota recusa a requisição (falha fechada) |
 
 Opcional:
 - `PEROLA_VOICE` (padrão `coral`) — voz do OpenAI Realtime.
@@ -130,9 +131,22 @@ direto na conta:
 Isso é configuração da conta, não tem como fazer por código — só quem tem
 login na OpenAI consegue setar.
 
+## Segurança
+
+Não tem conta nem senha de usuário — a Pérola nunca teve isso, e recriar
+seria pesado pra criança usar. Em vez disso, um portão simples: as três
+rotas de API (`session`, `ver`, `memoria`) recusam qualquer requisição que
+não venha com o `PEROLA_ACCESS_CODE` certo no header. Sem domínio público
+isso não importava (só quem estava no `localhost` chegava lá); com domínio
+de verdade, qualquer um que descobrir o endereço pode gastar da sua conta
+OpenAI ou, pior, plantar um "fato" falso na memória dela — por isso o
+código passou a ser obrigatório.
+
 ## Primeiro acesso
 
-Acesse `/perola` — a Pérola já estará funcional, sem login.
+Acesse `/perola` — vai pedir o código de acesso na primeira vez. Depois de
+digitado, fica salvo no navegador daquele aparelho e não pede de novo.
+Digitou errado? Ele esquece o código salvo e pede outra vez.
 
 ## Memória
 

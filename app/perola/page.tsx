@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { PerolaFace, type Expression } from "@/components/perola/perola-face"
 import { CameraFeed, type CameraFeedRef } from "@/components/perola/camera-feed"
 
@@ -14,6 +14,8 @@ type Status = "desligada" | "ligando" | "ligada" | "erro"
  */
 const MAX_SESSAO_MIN = 20
 
+const CODIGO_KEY = "perola_codigo"
+
 /**
  * Tela da Pérola — conversa por voz via OpenAI Realtime.
  * Rode: npm run dev -> http://localhost:3000/perola
@@ -23,6 +25,9 @@ export default function PerolaPage() {
   const [status, setStatus] = useState<Status>("desligada")
   const [erro, setErro] = useState("")
   const [camAtiva, setCamAtiva] = useState(false)
+  const [codigo, setCodigo] = useState<string | null>(null)
+  const [pronto, setPronto] = useState(false)
+  const [tentativa, setTentativa] = useState("")
 
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const dcRef = useRef<RTCDataChannel | null>(null)
@@ -30,8 +35,27 @@ export default function PerolaPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const camRef = useRef<CameraFeedRef | null>(null)
   const cronometroRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const codigoRef = useRef<string | null>(null)
   /** expressão escolhida pela Pérola, pra voltar nela quando parar de falar */
   const baseExpr = useRef<Expression>("neutra")
+
+  useEffect(() => {
+    setCodigo(localStorage.getItem(CODIGO_KEY))
+    setPronto(true)
+  }, [])
+
+  useEffect(() => {
+    codigoRef.current = codigo
+  }, [codigo])
+
+  function entrarComCodigo(e: React.FormEvent) {
+    e.preventDefault()
+    const valor = tentativa.trim()
+    if (!valor) return
+    localStorage.setItem(CODIGO_KEY, valor)
+    setCodigo(valor)
+    setTentativa("")
+  }
 
   const enviar = (obj: unknown) => {
     if (dcRef.current?.readyState === "open") dcRef.current.send(JSON.stringify(obj))
@@ -88,7 +112,7 @@ export default function PerolaPage() {
 
           const r = await fetch("/api/perola/ver", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Perola-Code": codigoRef.current ?? "" },
             body: JSON.stringify({ image: frame }),
           })
           const data = await r.json()
@@ -98,7 +122,7 @@ export default function PerolaPage() {
         if (ev.name === "lembrar") {
           const r = await fetch("/api/perola/memoria", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", "X-Perola-Code": codigoRef.current ?? "" },
             body: JSON.stringify({ fato: args.fato }),
           })
           const data = await r.json()
@@ -115,7 +139,15 @@ export default function PerolaPage() {
     setExpression("pensando")
 
     try {
-      const sessionRes = await fetch("/api/perola/session", { method: "POST" })
+      const sessionRes = await fetch("/api/perola/session", {
+        method: "POST",
+        headers: { "X-Perola-Code": codigoRef.current ?? "" },
+      })
+      if (sessionRes.status === 401) {
+        localStorage.removeItem(CODIGO_KEY)
+        setCodigo(null)
+        throw new Error("código de acesso errado")
+      }
       if (!sessionRes.ok) throw new Error("não consegui criar a sessão")
       const { client_secret } = await sessionRes.json()
 
@@ -186,6 +218,34 @@ export default function PerolaPage() {
     streamRef.current = null
     setStatus("desligada")
     setExpression("dormindo")
+  }
+
+  if (!pronto) {
+    return <main className="h-dvh bg-black" />
+  }
+
+  if (!codigo) {
+    return (
+      <main className="flex h-dvh flex-col items-center justify-center bg-black px-6 text-white">
+        <form onSubmit={entrarComCodigo} className="flex w-full max-w-xs flex-col items-center gap-3">
+          <input
+            type="password"
+            value={tentativa}
+            onChange={(e) => setTentativa(e.target.value)}
+            placeholder="código de acesso"
+            autoFocus
+            className="w-full rounded-full border border-white/20 bg-white/5 px-5 py-3 text-center text-white outline-none focus:border-[#5FE3D6]"
+          />
+          <button
+            type="submit"
+            className="rounded-full bg-[#5FE3D6] px-9 py-3 text-sm font-semibold text-[#00312c] transition active:scale-95"
+          >
+            entrar
+          </button>
+          {erro && <p className="max-w-xs text-center text-sm text-red-400/80">{erro}</p>}
+        </form>
+      </main>
+    )
   }
 
   return (

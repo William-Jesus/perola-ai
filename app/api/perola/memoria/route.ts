@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { addFato } from "@/lib/perola/memoria"
+import { codigoValido, respostaNaoAutorizada } from "@/lib/perola/auth"
 
 /**
  * Chamada pelo cliente quando a Pérola usa a função lembrar durante a
@@ -10,6 +11,8 @@ import { addFato } from "@/lib/perola/memoria"
 const MAX_LEN = 200
 
 export async function POST(request: Request) {
+  if (!codigoValido(request)) return respostaNaoAutorizada()
+
   const rl = checkRateLimit(request, "perola-memoria", 20)
   if (!rl.allowed) return rl.response
 
