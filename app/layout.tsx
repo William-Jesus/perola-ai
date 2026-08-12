@@ -9,6 +9,10 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: 'Pérola',
   description: 'Assistente de IA para crianças — conversa por voz, conduz com perguntas até a criança chegar sozinha na resposta.',
+  appleWebApp: {
+    title: 'Pérola',
+    statusBarStyle: 'black-translucent',
+  },
   icons: {
     icon: [
       {
