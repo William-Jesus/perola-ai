@@ -1,5 +1,5 @@
-import { JarvisCore } from "@/components/jarvis/jarvis-core"
+import { redirect } from "next/navigation"
 
-export default function JarvisPage() {
-  return <JarvisCore />
+export default function Home() {
+  redirect("/perola")
 }

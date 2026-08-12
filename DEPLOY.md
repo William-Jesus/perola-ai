@@ -8,12 +8,9 @@
 
 ## Passo a passo
 
-### 1. Clone o repositório no servidor
+### 1. Envie o repositório para o servidor
 
-```bash
-git clone https://github.com/William-Jesus/Jarvis.git
-cd Jarvis
-```
+O remote `origin` deste repositório foi removido de propósito (fork independente do jarvis-ai-assistant). Configure seu próprio remote e faça o clone/push a partir dele, ou copie a pasta diretamente para o servidor.
 
 ### 2. Crie o arquivo `.env.local`
 
@@ -30,16 +27,12 @@ nano .env.local
 docker compose up -d --build
 ```
 
-A primeira build demora ~5-10 minutos porque baixa:
-- Node.js deps
-- Python + SpeechBrain + PyTorch
-- Playwright Chromium
-- Modelo ECAPA-TDNN ( SpeechBrain )
+A build é só Node.js — sem dependências de Python ou browser automation.
 
 ### 4. Verifique se subiu
 
 ```bash
-docker compose logs -f jarvis
+docker compose logs -f perola
 ```
 
 Acesse: `http://seu-servidor:3000`
@@ -51,7 +44,7 @@ Acesse: `http://seu-servidor:3000`
 docker compose restart
 
 # Logs
-docker compose logs -f jarvis
+docker compose logs -f perola
 
 # Stop
 docker compose down
@@ -68,7 +61,7 @@ Use Nginx ou Traefik com HTTPS. Exemplo Nginx:
 ```nginx
 server {
     listen 443 ssl;
-    server_name jarvis.seudominio.com;
+    server_name perola.seudominio.com;
 
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
@@ -92,27 +85,10 @@ server {
 
 | Variável | Descrição |
 |----------|-----------|
-| `OPENAI_API_KEY` | Chave da OpenAI (GPT-4o / Realtime) |
-| `ANTHROPIC_API_KEY` | Chave da Anthropic (Claude) |
-| `ELEVENLABS_API_KEY` | Chave do ElevenLabs (TTS) |
-| `SESSION_SECRET` | Senha forte para criptografar cookies (min 32 chars) |
-| `INTERNAL_API_SECRET` | Senha para chamadas internas entre APIs |
-| `NEXT_PUBLIC_ORIGIN` | URL pública do app (ex: `https://jarvis.seudominio.com`) |
+| `OPENAI_API_KEY` | Chave da OpenAI (Realtime + gpt-4o vision) |
+
+Opcional: `PEROLA_VOICE` (padrão `coral`) — voz do OpenAI Realtime.
 
 ## Primeiro acesso
 
-1. Acesse `/login`
-2. Cadastre uma passkey (WebAuthn)
-3. Faça login
-4. O JARVIS já estará funcional
-
-Para cadastrar uma voz:
-```bash
-curl -X POST http://localhost:3000/api/jarvis/voice/enroll \
-  -H "Content-Type: application/json" \
-  -d '{
-    "audioBase64": "data:audio/webm;base64,...",
-    "name": "William",
-    "relationship": "dono"
-  }'
-```
+Acesse `/perola` — a Pérola já estará funcional, sem login.

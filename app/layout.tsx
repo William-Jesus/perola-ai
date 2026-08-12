@@ -7,9 +7,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'JARVIS - AI Assistant',
-  description: 'Advanced AI assistant with voice control, real-time search, and natural language processing',
-  generator: 'v0.app',
+  title: 'Pérola',
+  description: 'Assistente de IA para crianças — conversa por voz, conduz com perguntas até a criança chegar sozinha na resposta.',
   icons: {
     icon: [
       {

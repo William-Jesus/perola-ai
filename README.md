@@ -1,51 +1,26 @@
-# Jarvis AI Assistant
+# Pérola
 
-A futuristic, Jarvis-inspired AI voice assistant web interface built with Next.js, Tailwind CSS, and Radix UI. 
+Assistente de IA para uma criança de 9 anos. Amiga e conselheira primeiro, ajudante de dever depois. Conversa por voz, tem rosto na tela e enxerga pela câmera.
 
-This project features a sci-fi HUD overlay, real-time voice visualization, and interactive chat capabilities to provide an immersive AI assistant experience.
+A regra número um: a Pérola nunca dá a resposta do dever de casa — ela conduz com perguntas até a criança chegar sozinha. Detalhes de personalidade, segurança e arquitetura estão em [`CLAUDE.md`](CLAUDE.md).
 
-## Features
+## Rodar
 
-- **Futuristic HUD Overlay:** A sci-fi inspired circular interface that gives a high-tech feel.
-- **Voice Visualizer:** Real-time visual feedback for voice interactions.
-- **Interactive Chat Panel:** A sleek conversation panel to interact with the AI assistant.
-- **Responsive Design:** Fully responsive and mobile-friendly interface.
-- **Modern Tech Stack:** Built with Next.js 15, React 19, Tailwind CSS v4, and Radix UI components (shadcn/ui).
+```bash
+npm install
+npm run dev   # http://localhost:3000/perola
+```
 
-## Getting Started
-
-### Prerequisites
-
-Make sure you have Node.js installed. This project uses `pnpm` as the package manager.
-
-### Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/raza-fast/jarvis-ai-assistant.git
-   cd jarvis-ai-assistant
-   ```
-
-2. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-
-3. Start the development server:
-   ```bash
-   pnpm dev
-   ```
-
-4. Open [http://localhost:3000](http://localhost:3000) in your browser to see the result.
+`.env.local` precisa de `OPENAI_API_KEY`. Opcional: `PEROLA_VOICE` (padrão `coral`).
 
 ## Tech Stack
 
-- **Framework:** [Next.js](https://nextjs.org/)
+- **Framework:** [Next.js](https://nextjs.org/) (App Router)
+- **Voz:** OpenAI Realtime (`gpt-realtime-2`) via WebRTC
+- **Visão:** OpenAI `gpt-4o` (transcrição de exercícios, nunca resolução)
 - **Styling:** [Tailwind CSS](https://tailwindcss.com/)
-- **Components:** [Radix UI](https://www.radix-ui.com/) / shadcn/ui
-- **Icons:** [Lucide React](https://lucide.dev/)
-- **Language:** TypeScript
+- **Linguagem:** TypeScript
 
-## License
+## Deploy
 
-This project is licensed under the MIT License.
+Ver [`DEPLOY.md`](DEPLOY.md).
