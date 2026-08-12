@@ -6,8 +6,13 @@ import { CameraFeed, type CameraFeedRef } from "@/components/perola/camera-feed"
 
 type Status = "desligada" | "ligando" | "ligada" | "erro"
 
-/** rede de segurança contra sessão esquecida aberta, não é feature de produto */
-const MAX_SESSAO_MIN = Number(process.env.NEXT_PUBLIC_PEROLA_MAX_MINUTOS) || 20
+/**
+ * rede de segurança contra sessão esquecida aberta, não é feature de produto.
+ * Fixo em código (não env var) de propósito: NEXT_PUBLIC_* é gravado no bundle
+ * no build, e o .dockerignore exclui .env.local do build do Docker — uma env
+ * var aqui pareceria configurável mas nunca teria efeito no deploy.
+ */
+const MAX_SESSAO_MIN = 20
 
 /**
  * Tela da Pérola — conversa por voz via OpenAI Realtime.

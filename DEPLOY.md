@@ -23,7 +23,12 @@ nano .env.local
 
 ### 3. Build e start
 
+Crie a pasta de dados **antes** do primeiro `up` — o container roda como
+usuário não-root, e se o Docker criar `./data` sozinho ela nasce do root,
+o que impede a Pérola de gravar `memoria.json`:
+
 ```bash
+mkdir -p data && chmod 777 data
 docker compose up -d --build
 ```
 
@@ -107,9 +112,10 @@ Opcional:
 - `PEROLA_VOICE` (padrão `coral`) — voz do OpenAI Realtime.
 - `PEROLA_NOME` (padrão `amiga`) — nome da criança.
 - `PEROLA_IDADE` (padrão `9`) — idade da criança.
-- `NEXT_PUBLIC_PEROLA_MAX_MINUTOS` (padrão `20`) — corta a chamada sozinha
-  depois de X minutos, pra sessão não ficar aberta e gastando à toa se
-  esquecerem de desligar.
+
+A chamada corta sozinha depois de 20 minutos, pra sessão não ficar aberta e
+gastando à toa se esquecerem de desligar — fixo em código, não é variável
+de ambiente (ver comentário em `app/perola/page.tsx`).
 
 ## Limite de gasto na OpenAI
 
