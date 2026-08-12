@@ -54,17 +54,25 @@ docker compose down
 docker compose up -d --build
 ```
 
-### 6. Proxy reverso (recomendado)
+### 6. Proxy reverso com HTTPS (obrigatório, não só recomendado)
 
-Use Nginx ou Traefik com HTTPS. Exemplo Nginx:
+O microfone e a câmera só funcionam em origem segura — o iOS Safari bloqueia
+`getUserMedia` em qualquer coisa que não seja HTTPS (ou `localhost`). Sem
+isso, dá pra ver a tela mas não dá pra conversar com ela.
+
+Aponte o DNS do domínio (ou subdomínio, tipo `perola.seudominio.com`) pro IP
+do VPS antes de seguir.
+
+```bash
+sudo apt install nginx certbot python3-certbot-nginx
+```
+
+Exemplo de config do Nginx (`/etc/nginx/sites-available/perola`):
 
 ```nginx
 server {
-    listen 443 ssl;
+    listen 80;
     server_name perola.seudominio.com;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -77,7 +85,15 @@ server {
 }
 ```
 
-**Importante:** O WebSocket do WebRTC precisa do `upgrade` header como no exemplo acima.
+```bash
+sudo ln -s /etc/nginx/sites-available/perola /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d perola.seudominio.com
+```
+
+O Certbot edita o bloco do Nginx pra HTTPS automaticamente e cuida da
+renovação do certificado. **Importante:** o WebSocket do WebRTC precisa do
+`upgrade` header como no exemplo acima.
 
 ---
 
@@ -91,6 +107,22 @@ Opcional:
 - `PEROLA_VOICE` (padrão `coral`) — voz do OpenAI Realtime.
 - `PEROLA_NOME` (padrão `amiga`) — nome da criança.
 - `PEROLA_IDADE` (padrão `9`) — idade da criança.
+- `NEXT_PUBLIC_PEROLA_MAX_MINUTOS` (padrão `20`) — corta a chamada sozinha
+  depois de X minutos, pra sessão não ficar aberta e gastando à toa se
+  esquecerem de desligar.
+
+## Limite de gasto na OpenAI
+
+O cap de duração acima protege contra sessão esquecida aberta, mas não
+contra uso normal virar custo alto sem ninguém perceber. Configure um teto
+direto na conta:
+
+1. [platform.openai.com/settings/organization/limits](https://platform.openai.com/settings/organization/limits)
+2. Defina um **limite de gasto mensal** (soft limit avisa por e-mail, hard
+   limit corta a API quando bate o teto).
+
+Isso é configuração da conta, não tem como fazer por código — só quem tem
+login na OpenAI consegue setar.
 
 ## Primeiro acesso
 

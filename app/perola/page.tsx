@@ -6,6 +6,9 @@ import { CameraFeed, type CameraFeedRef } from "@/components/perola/camera-feed"
 
 type Status = "desligada" | "ligando" | "ligada" | "erro"
 
+/** rede de segurança contra sessão esquecida aberta, não é feature de produto */
+const MAX_SESSAO_MIN = Number(process.env.NEXT_PUBLIC_PEROLA_MAX_MINUTOS) || 20
+
 /**
  * Tela da Pérola — conversa por voz via OpenAI Realtime.
  * Rode: npm run dev -> http://localhost:3000/perola
@@ -21,6 +24,7 @@ export default function PerolaPage() {
   const streamRef = useRef<MediaStream | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const camRef = useRef<CameraFeedRef | null>(null)
+  const cronometroRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** expressão escolhida pela Pérola, pra voltar nela quando parar de falar */
   const baseExpr = useRef<Expression>("neutra")
 
@@ -136,6 +140,7 @@ export default function PerolaPage() {
         baseExpr.current = "neutra"
         // ela puxa conversa primeiro, senão a criança fica esperando
         enviar({ type: "response.create" })
+        cronometroRef.current = setTimeout(desligar, MAX_SESSAO_MIN * 60_000)
       }
       dc.onclose = () => {
         setStatus("desligada")
@@ -165,6 +170,8 @@ export default function PerolaPage() {
   }
 
   function desligar() {
+    if (cronometroRef.current) clearTimeout(cronometroRef.current)
+    cronometroRef.current = null
     dcRef.current?.close()
     pcRef.current?.close()
     streamRef.current?.getTracks().forEach((t) => t.stop())

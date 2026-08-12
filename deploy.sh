@@ -2,43 +2,42 @@
 set -euo pipefail
 
 # ============================================
-# JARVIS Deploy Script
+# Deploy da Pérola
 # ============================================
-# Conecta via SSH interativo (com 2FA) no VPS,
-# faz git pull, build e restart do PM2.
+# Conecta via SSH no VPS, faz git pull e
+# rebuilda o container com docker compose.
+# Ver DEPLOY.md pro passo a passo manual.
 #
 # Uso:
 #   chmod +x deploy.sh
 #   ./deploy.sh
+#
+# Espera um host "perola-vps" configurado no
+# seu ~/.ssh/config, apontando pro VPS.
 # ============================================
 
-VPS_HOST="jarvis-vps"
-APP_DIR="/root/jarvis"
+VPS_HOST="perola-vps"
+APP_DIR="/root/perola-ai"
 
 echo "================================================"
-echo "  🚀 JARVIS Deploy"
+echo "  🐚 Deploy da Pérola"
 echo "================================================"
 echo ""
 echo "Servidor: $VPS_HOST"
 echo "Diretório: $APP_DIR"
 echo ""
-echo "Você precisará digitar o código 2FA quando"
-echo "o servidor solicitar."
-echo ""
 read -p "Pressione ENTER para continuar..."
 echo ""
 
-# Executa os comandos no servidor via SSH interativo
 ssh -t "$VPS_HOST" "
   set -e
   echo '[DEPLOY] Conectado ao servidor'
   cd $APP_DIR
   echo '[DEPLOY] Git pull...'
   git pull origin main
-  echo '[DEPLOY] Buildando...'
-  npm run build
-  echo '[DEPLOY] Restartando PM2...'
-  pm2 restart jarvis jarvis-ws
+  echo '[DEPLOY] Rebuildando container...'
+  docker compose down
+  docker compose up -d --build
   echo '[DEPLOY] ✅ Deploy concluído!'
 "
 
