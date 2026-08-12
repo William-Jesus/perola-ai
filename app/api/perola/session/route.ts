@@ -32,6 +32,12 @@ export async function POST(request: Request) {
         type: "realtime" as const,
         model: "gpt-realtime-2",
         audio: {
+          input: {
+            // far_field: mic embutido de laptop/tablet a alguma distância,
+            // não headset — o cenário real de uma criança de 9 anos falando
+            // do outro lado do quarto, com TV/irmão/casa ao fundo.
+            noise_reduction: { type: "far_field" },
+          },
           output: { voice: VOZ },
         },
         instructions: buildPerolaPrompt({ nome: "amiga", idade: 9 }),
