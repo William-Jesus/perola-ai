@@ -32,6 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create non-root user
 RUN groupadd -r perola && useradd -r -g perola perola
 
+# Memória da Pérola (data/memoria.json) — precisa existir e ser gravável
+RUN mkdir -p /app/data && chown -R perola:perola /app/data
+
 # Copy built application
 COPY --from=builder --chown=perola:perola /app/.next/standalone ./
 COPY --from=builder --chown=perola:perola /app/.next/static ./.next/static

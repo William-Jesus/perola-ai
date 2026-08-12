@@ -11,7 +11,11 @@ next.user-config.*
 # Environment variables
 .env*.local
 
+# Memória da Pérola — dado pessoal da criança, não vai pro repo
+/data/
+
 # Common ignores
 node_modules/
 .next/
 .DS_Store
+*.tsbuildinfo

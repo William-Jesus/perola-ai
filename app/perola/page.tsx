@@ -85,6 +85,16 @@ export default function PerolaPage() {
           const data = await r.json()
           responderFuncao(ev.call_id, { vejo: data.descricao ?? data.error })
         }
+
+        if (ev.name === "lembrar") {
+          const r = await fetch("/api/perola/memoria", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fato: args.fato }),
+          })
+          const data = await r.json()
+          responderFuncao(ev.call_id, data.ok ? { ok: true } : { erro: data.error })
+        }
         break
       }
     }

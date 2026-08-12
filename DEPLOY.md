@@ -87,8 +87,19 @@ server {
 |----------|-----------|
 | `OPENAI_API_KEY` | Chave da OpenAI (Realtime + gpt-4o vision) |
 
-Opcional: `PEROLA_VOICE` (padrão `coral`) — voz do OpenAI Realtime.
+Opcional:
+- `PEROLA_VOICE` (padrão `coral`) — voz do OpenAI Realtime.
+- `PEROLA_NOME` (padrão `amiga`) — nome da criança.
+- `PEROLA_IDADE` (padrão `9`) — idade da criança.
 
 ## Primeiro acesso
 
 Acesse `/perola` — a Pérola já estará funcional, sem login.
+
+## Memória
+
+A Pérola guarda fatos soltos sobre a criança (nome de uma amiga, um hobby, uma
+dificuldade recorrente) em `data/memoria.json`, criado automaticamente na
+primeira vez que ela usa a função `lembrar`. É dado pessoal — não vai pro
+git (`.gitignore`) e, no Docker, precisa do volume `./data:/app/data` do
+`docker-compose.yml` pra sobreviver a um restart do container.

@@ -14,6 +14,9 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+    volumes:
+      # Persiste a memória da Pérola (data/memoria.json) entre restarts
+      - ./data:/app/data
     networks:
       - perola-net
 

@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { buildPerolaPrompt, EXPRESSOES } from "@/lib/perola/prompt"
+import { getFatos } from "@/lib/perola/memoria"
 
 /**
  * Sessão de voz da Pérola (OpenAI Realtime).
  *
  * ISOLAMENTO PROPOSITAL — esta rota é separada de /api/jarvis/session.
- * A Pérola recebe SOMENTE duas funções: mudar a própria expressão e ver a
- * câmera. Ela não tem run_command, open_app, read_file, write_file,
- * list_directory, get_agents nem ask_claude.
+ * A Pérola recebe SOMENTE três funções: mudar a própria expressão, ver a
+ * câmera e guardar um fato pra próxima sessão. Ela não tem run_command,
+ * open_app, read_file, write_file, list_directory, get_agents nem
+ * ask_claude.
  *
  * Isso é controle de acesso no servidor, não no prompt. Prompt se convence;
  * uma lista de ferramentas que não existe, não.
@@ -16,6 +18,8 @@ import { buildPerolaPrompt, EXPRESSOES } from "@/lib/perola/prompt"
  */
 
 const VOZ = process.env.PEROLA_VOICE || "coral"
+const NOME = process.env.PEROLA_NOME || "amiga"
+const IDADE = Number(process.env.PEROLA_IDADE) || 9
 
 export async function POST(request: Request) {
   const rl = checkRateLimit(request, "perola-session", 10)
@@ -26,6 +30,8 @@ export async function POST(request: Request) {
     if (!apiKey) {
       return NextResponse.json({ error: "OPENAI_API_KEY não configurada" }, { status: 500 })
     }
+
+    const fatos = await getFatos()
 
     const body = {
       session: {
@@ -40,7 +46,7 @@ export async function POST(request: Request) {
           },
           output: { voice: VOZ },
         },
-        instructions: buildPerolaPrompt({ nome: "amiga", idade: 9 }),
+        instructions: buildPerolaPrompt({ nome: NOME, idade: IDADE, fatos }),
         tools: [
           {
             type: "function" as const,
@@ -65,6 +71,22 @@ export async function POST(request: Request) {
             description:
               "Captura uma foto pela câmera para ver o que a menina está mostrando — dever de casa, caderno, desenho, objeto. Use quando ela disser 'olha isso', 'me ajuda com esse exercício', 'o que é isso'.",
             parameters: { type: "object", properties: {} },
+          },
+          {
+            type: "function" as const,
+            name: "lembrar",
+            description:
+              "Guarda um fato curto sobre a criança pra lembrar na próxima conversa — nome de uma amiga, um hobby, uma dificuldade recorrente numa matéria. Só use pra coisa que vale a pena lembrar depois, não pra assunto do momento.",
+            parameters: {
+              type: "object",
+              properties: {
+                fato: {
+                  type: "string",
+                  description: "Frase curta e específica, ex: 'gosta de desenhar cavalos'",
+                },
+              },
+              required: ["fato"],
+            },
           },
         ],
       },
